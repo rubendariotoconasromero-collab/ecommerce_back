@@ -10,30 +10,22 @@ class RoleAndPermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Definir los Permisos por Módulo
+        // 1. Definir los Permisos por Módulo (Estructura simplificada)
         $permissions = [
-            // Módulo Usuarios y Accesos
-            ['name' => 'Ver Usuarios', 'slug' => 'ver-usuarios', 'module' => 'Usuarios'],
-            ['name' => 'Crear Usuarios', 'slug' => 'crear-usuarios', 'module' => 'Usuarios'],
-            ['name' => 'Editar Usuarios', 'slug' => 'editar-usuarios', 'module' => 'Usuarios'],
-            ['name' => 'Eliminar Usuarios', 'slug' => 'eliminar-usuarios', 'module' => 'Usuarios'],
+            // Operaciones
+            ['name' => 'Acceso al Módulo Pedidos', 'slug' => 'modulo-pedidos', 'module' => 'Operaciones'],
             
-            // Módulo Catálogo
-            ['name' => 'Ver Productos', 'slug' => 'ver-productos', 'module' => 'Catálogo'],
-            ['name' => 'Crear Productos', 'slug' => 'crear-productos', 'module' => 'Catálogo'],
-            ['name' => 'Editar Productos', 'slug' => 'editar-productos', 'module' => 'Catálogo'],
+            // Catálogo
+            ['name' => 'Acceso al Módulo Categorías', 'slug' => 'modulo-categorias', 'module' => 'Catálogo'],
+            ['name' => 'Acceso al Módulo Productos', 'slug' => 'modulo-productos', 'module' => 'Catálogo'],
             
-            // Módulo Pedidos y Producción (Vital para Make-to-Order)
-            ['name' => 'Ver Pedidos', 'slug' => 'ver-pedidos', 'module' => 'Ventas'],
-            ['name' => 'Aprobar Pedidos', 'slug' => 'aprobar-pedidos', 'module' => 'Ventas'],
-            ['name' => 'Gestionar Producción', 'slug' => 'gestionar-produccion', 'module' => 'Producción'],
-            ['name' => 'Control de Calidad', 'slug' => 'control-calidad', 'module' => 'Producción'],
-            
-            // Módulo Logística
-            ['name' => 'Despachar Pedidos', 'slug' => 'despachar-pedidos', 'module' => 'Logística'],
+            // Administración
+            ['name' => 'Acceso al Módulo Usuarios', 'slug' => 'modulo-usuarios', 'module' => 'Administración'],
+            ['name' => 'Acceso al Módulo Roles', 'slug' => 'modulo-roles', 'module' => 'Administración'],
+            ['name' => 'Acceso al Módulo Configuración', 'slug' => 'modulo-configuracion', 'module' => 'Administración'],
         ];
 
-        // Insertar permisos en la base de datos
+        // Insertar permisos
         foreach ($permissions as $perm) {
             Permission::firstOrCreate(['slug' => $perm['slug']], $perm);
         }
@@ -41,25 +33,18 @@ class RoleAndPermissionSeeder extends Seeder
         // 2. Crear Roles Base
         $roleSuperAdmin = Role::firstOrCreate(['slug' => 'super-admin'], ['name' => 'Super Administrador']);
         $roleVentas = Role::firstOrCreate(['slug' => 'vendedor'], ['name' => 'Gestor de Ventas']);
-        $roleProduccion = Role::firstOrCreate(['slug' => 'operario-produccion'], ['name' => 'Operario de Producción']);
-        $roleLogistica = Role::firstOrCreate(['slug' => 'despachador'], ['name' => 'Encargado de Logística']);
         
-        // Roles para clientes (B2C y B2B)
-        Role::firstOrCreate(['slug' => 'cliente-persona'], ['name' => 'Cliente Individual']);
-        Role::firstOrCreate(['slug' => 'cliente-empresa'], ['name' => 'Cliente Corporativo']);
-
-        // 3. Asignar Permisos a los Roles
+        // 3. Asignar Permisos
         
-        // El Super Admin obtiene TODOS los permisos de la base de datos
-        $allPermissions = Permission::all();
-        $roleSuperAdmin->permissions()->sync($allPermissions->pluck('id'));
+        // El Super Admin tiene acceso a TODOS los módulos
+        $roleSuperAdmin->permissions()->sync(Permission::all()->pluck('id'));
 
-        // El Vendedor solo ve catálogo, ve pedidos y los aprueba
-        $ventasPermissions = Permission::whereIn('slug', ['ver-productos', 'ver-pedidos', 'aprobar-pedidos'])->pluck('id');
-        $roleVentas->permissions()->sync($ventasPermissions);
-
-        // El Operario solo gestiona producción y calidad
-        $produccionPermissions = Permission::whereIn('slug', ['gestionar-produccion', 'control-calidad'])->pluck('id');
-        $roleProduccion->permissions()->sync($produccionPermissions);
+        // El Vendedor solo accede a Pedidos y Catálogo
+        $ventasPerms = Permission::whereIn('slug', [
+            'modulo-pedidos', 
+            'modulo-categorias', 
+            'modulo-productos'
+        ])->pluck('id');
+        $roleVentas->permissions()->sync($ventasPerms);
     }
 }
