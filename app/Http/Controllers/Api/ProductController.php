@@ -5,14 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use App\Http\Requests\StoreProductRequest;
+use App\Http\Requests\UpdateProductRequest;
+use App\Http\Requests\PublicProductRequest;
 
 class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        // Iniciamos la consulta cargando la relación de categoría
-        $query = Product::with('category:id,name,slug');
+        // Iniciamos la consulta cargando la relación de categoría e imágenes
+        $query = Product::with(['category:id,name,slug,image_url', 'images']);
+
+        // Filtro por Destacados: ?featured=true
+        if ($request->has('featured') && $request->featured == 'true') {
+            $query->where('is_featured', true);
+        }
 
         // Filtro por Categoría: Usamos filled() para ignorar strings vacíos
         if ($request->filled('category_id')) {
@@ -21,7 +28,6 @@ class ProductController extends Controller
 
         // Filtro por Estado: Captura tanto 'true' como 'false' del select de Vue
         if ($request->filled('active')) {
-            // filter_var convierte los strings 'true'/'false' a booleanos reales de PHP
             $isActive = filter_var($request->active, FILTER_VALIDATE_BOOLEAN);
             $query->where('is_active', $isActive);
         }
@@ -35,71 +41,45 @@ class ProductController extends Controller
             });
         }
 
-        // Paginación de 15 elementos
+        // Si es una petición pública sin paginación (ej: landing page)
+        if ($request->has('nopaginate') && $request->nopaginate == 'true') {
+            return response()->json($query->orderBy('id', 'desc')->get());
+        }
+
+        // Paginación de 15 elementos para el panel administrativo
         $products = $query->orderBy('id', 'desc')->paginate(15);
 
         return response()->json($products);
     }
 
-    public function store(Request $request)
+    public function store(StoreProductRequest $request)
     {
-        $validated = $request->validate([
-            'category_id'               => 'required|exists:categories,id',
-            'sku'                       => 'required|string|max:50|unique:products,sku',
-            'name'                      => 'required|string|max:255',
-            'description'               => 'nullable|string',
-            'base_price'                => 'required|numeric|min:0',
-            'cost_price'                => 'required|numeric|min:0',
-            'sale_price'                => 'required|numeric|min:0',
-            'production_lead_time_days' => 'required|integer|min:0',
-            'attributes'                => 'nullable|array', // Valida que sea un objeto/array
-            'is_active'                 => 'boolean'
-        ]);
-
-        $product = Product::create($validated);
+        $product = Product::create($request->validated());
 
         return response()->json([
             'message' => 'Producto registrado exitosamente',
-            'product' => $product->load('category')
+            'product' => $product->load(['category', 'images'])
         ], 201);
     }
 
     public function show(Product $product)
     {
-        // Retorna el producto con su categoría (y futuras imágenes)
-        return response()->json($product->load('category'));
+        return response()->json($product->load(['category', 'images']));
     }
 
-    public function update(Request $request, Product $product)
+    public function update(UpdateProductRequest $request, Product $product)
     {
-        $validated = $request->validate([
-            'category_id'               => 'required|exists:categories,id',
-            'sku'                       => ['required', 'string', 'max:50', Rule::unique('products')->ignore($product->id)],
-            'name'                      => 'required|string|max:255',
-            'description'               => 'nullable|string',
-            'base_price'                => 'required|numeric|min:0',
-            'cost_price'                => 'required|numeric|min:0',
-            'sale_price'                => 'required|numeric|min:0',
-            'production_lead_time_days' => 'required|integer|min:0',
-            'attributes'                => 'nullable|array',
-            'is_active'                 => 'boolean'
-        ]);
-
-        $product->update($validated);
+        $product->update($request->validated());
 
         return response()->json([
             'message' => 'Producto actualizado exitosamente',
-            'product' => $product->load('category')
+            'product' => $product->load(['category', 'images'])
         ]);
     }
 
     public function destroy(Product $product)
     {
-        // Más adelante, aquí deberás validar si el producto está en algún OrderItem
-        // antes de eliminarlo. Por ahora, permitimos la eliminación.
-        
         $product->delete();
-        
         return response()->json(['message' => 'Producto eliminado correctamente']);
     }
 }

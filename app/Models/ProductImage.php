@@ -20,12 +20,20 @@ class ProductImage extends Model
         'sort_order' => 'integer',
     ];
 
-    // Atributo virtual para obtener la URL completa de la imagen en el Frontend
-    protected $appends = ['url'];
+    // Atributos virtuales para obtener la URL completa de la imagen en el Frontend
+    protected $appends = ['url', 'image_url'];
 
     public function getUrlAttribute()
     {
+        if (str_starts_with($this->image_path, 'http')) {
+            return $this->image_path;
+        }
         return asset('storage/' . $this->image_path);
+    }
+
+    public function getImageUrlAttribute()
+    {
+        return $this->getUrlAttribute();
     }
 
     public function product(): BelongsTo

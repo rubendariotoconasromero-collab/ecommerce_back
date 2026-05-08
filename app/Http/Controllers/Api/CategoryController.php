@@ -7,6 +7,7 @@ use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
 
 class CategoryController extends Controller
 {
@@ -29,11 +30,18 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name'      => 'required|string|max:255|unique:categories,name',
+            'description' => 'nullable|string',
+            'image'     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'is_active' => 'boolean'
         ]);
 
         // Autogenerar el slug a partir del nombre
         $validated['slug'] = Str::slug($validated['name']);
+
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('categories', 'public');
+            $validated['image_url'] = asset('storage/' . $path);
+        }
 
         $category = Category::create($validated);
 
@@ -53,11 +61,24 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name'      => ['required', 'string', 'max:255', Rule::unique('categories')->ignore($category->id)],
+            'description' => 'nullable|string',
+            'image'     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'is_active' => 'boolean'
         ]);
 
         if (isset($validated['name'])) {
             $validated['slug'] = Str::slug($validated['name']);
+        }
+
+        if ($request->hasFile('image')) {
+            // Eliminar imagen anterior si existe y no es una URL externa
+            if ($category->image_url && str_contains($category->image_url, asset('storage/'))) {
+                $oldPath = str_replace(asset('storage/'), '', $category->image_url);
+                Storage::disk('public')->delete($oldPath);
+            }
+
+            $path = $request->file('image')->store('categories', 'public');
+            $validated['image_url'] = asset('storage/' . $path);
         }
 
         $category->update($validated);
@@ -75,6 +96,12 @@ class CategoryController extends Controller
             return response()->json([
                 'message' => 'No se puede eliminar la categoría porque tiene productos asociados.'
             ], 422);
+        }
+
+        // Eliminar imagen física
+        if ($category->image_url && str_contains($category->image_url, asset('storage/'))) {
+            $path = str_replace(asset('storage/'), '', $category->image_url);
+            Storage::disk('public')->delete($path);
         }
 
         $category->delete();

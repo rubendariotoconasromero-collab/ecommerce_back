@@ -21,8 +21,10 @@ class Product extends Model
         'sale_price',
         'production_lead_time_days',
         'attributes',
-        'is_active'
+        'is_active',
+        'is_featured',
     ];
+
 
     // Casteo automático de tipos de datos
     protected $casts = [
