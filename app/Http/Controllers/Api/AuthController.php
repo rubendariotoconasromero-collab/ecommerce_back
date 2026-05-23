@@ -45,8 +45,8 @@ class AuthController extends Controller
         $tokenName = $request->device_name ?? 'web-app';
         $token = $user->createToken($tokenName)->plainTextToken;
 
-        // 5. Cargar los roles y permisos del usuario para que Vue sepa qué menús mostrar
-        $user->load('roles.permissions');
+        // 5. Cargar el rol y permisos del usuario para que Vue sepa qué menús mostrar
+        $user->load('role.permissions');
 
         return response()->json([
             'message' => 'Sesión iniciada correctamente',
@@ -75,8 +75,8 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        // Devolvemos el usuario junto con sus roles y permisos
-        $user = $request->user()->load('roles.permissions');
+        // Devolvemos el usuario junto con su rol y permisos
+        $user = $request->user()->load('role.permissions');
         
         return response()->json($user);
     }

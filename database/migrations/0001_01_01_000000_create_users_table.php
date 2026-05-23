@@ -11,22 +11,47 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // 1. PERMISSIONS (permissions)
+        Schema::create('permissions', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('name', 100);
+            $table->string('slug', 100)->unique();
+            $table->string('module', 100);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        // 2. ROLES (roles)
+        Schema::create('roles', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('name', 100);
+            $table->string('slug', 100)->unique();
+            $table->text('description')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        // 3. ROLE_PERMISSION (role_permission — N:M pivot table)
+        Schema::create('role_permission', function (Blueprint $table) {
+            $table->foreignUuid('role_id')->constrained('roles')->cascadeOnDelete();
+            $table->foreignUuid('permission_id')->constrained('permissions')->cascadeOnDelete();
+            $table->primary(['role_id', 'permission_id']);
+            $table->timestamp('created_at')->useCurrent();
+        });
+
+        // 4. USERS (users — Identidades de acceso y personal interno)
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            // Agregamos tus campos B2B/B2C
-            $table->enum('customer_type', ['individual', 'company'])->default('individual');
-            $table->string('name');
-            $table->string('business_name')->nullable();
-            $table->string('tax_id', 50)->nullable(); // NIT / RUT
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable(); // Nativo de Laravel, muy útil
-            $table->string('password'); // Laravel espera que se llame 'password'
-            $table->string('phone', 20)->nullable();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('role_id')->constrained('roles');
+            $table->string('name', 150);
+            $table->string('email', 150)->unique();
+            $table->string('password'); // Laravel standard
+            $table->string('phone', 30)->nullable();
             $table->boolean('is_active')->default(true);
             
             $table->rememberToken(); // Nativo de Laravel
-            $table->timestamps(); // Crea created_at y updated_at
-            $table->softDeletes(); // Crea el deleted_at
+            $table->timestamps();
+            $table->softDeletes(); // Para borrado lógico
         });
 
         // Tablas por defecto de Laravel para resetear passwords y sesiones
@@ -38,7 +63,7 @@ return new class extends Migration
 
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
-            $table->foreignId('user_id')->nullable()->index();
+            $table->foreignUuid('user_id')->nullable()->index();
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
             $table->longText('payload');
@@ -51,8 +76,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('role_permission');
+        Schema::dropIfExists('roles');
+        Schema::dropIfExists('permissions');
     }
 };

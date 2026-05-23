@@ -5,9 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class ProductImage extends Model
 {
+    use HasUuids;
+
+    protected $table = 'products_images';
+
+    // Este modelo en la base de datos física no tiene updated_at, solo created_at.
+    // Desactivamos los timestamps estándar de Laravel y manejamos created_at manualmente o mediante base de datos.
+    public $timestamps = false;
+
     protected $fillable = [
         'product_id',
         'image_path',
@@ -38,6 +47,6 @@ class ProductImage extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Product::class, 'product_id');
     }
 }

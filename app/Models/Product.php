@@ -6,10 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     protected $fillable = [
         'category_id',
@@ -22,17 +24,14 @@ class Product extends Model
         'production_lead_time_days',
         'attributes',
         'is_active',
-        'is_featured',
     ];
 
-
-    // Casteo automático de tipos de datos
     protected $casts = [
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'production_lead_time_days' => 'integer',
-        'attributes' => 'array', // Transforma el JSON a Array de PHP automáticamente
+        'attributes' => 'array',
         'is_active' => 'boolean',
     ];
 
@@ -42,9 +41,15 @@ class Product extends Model
         return $this->belongsTo(Category::class);
     }
 
-    // Añadir esto en App\Models\Product.php
-    public function images()
+    // Relación: Un producto tiene muchas imágenes
+    public function images(): HasMany
     {
-        return $this->hasMany(ProductImage::class)->orderBy('sort_order', 'asc');
+        return $this->hasMany(ProductImage::class, 'product_id')->orderBy('sort_order', 'asc');
+    }
+
+    // Relación: Un producto tiene una ficha de inventario
+    public function inventory(): HasOne
+    {
+        return $this->hasOne(Inventory::class, 'product_id');
     }
 }

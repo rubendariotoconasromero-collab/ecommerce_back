@@ -12,11 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('categories', function (Blueprint $table) {
-            $table->id();
-            $table->string('name')->unique();
-            $table->string('slug')->unique();
+            $table->uuid('id')->primary();
+            $table->uuid('parent_id')->nullable();
+            $table->string('name', 100);
+            $table->string('slug', 100)->unique();
             $table->boolean('is_active')->default(true);
-            $table->timestamps(); // created_at y updated_at
+            $table->timestamps();
+
+            // Relación recursiva para subcategorías
+            $table->foreign('parent_id')
+                  ->references('id')
+                  ->on('categories')
+                  ->onDelete('set null');
         });
     }
 

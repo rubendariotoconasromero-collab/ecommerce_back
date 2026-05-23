@@ -8,16 +8,15 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, HasUuids;
 
     protected $fillable = [
-        'customer_type',
+        'role_id',
         'name',
-        'business_name',
-        'tax_id',
         'email',
         'password',
         'phone',
@@ -38,24 +37,27 @@ class User extends Authenticatable
         ];
     }
 
-    // RELACIÓN: Un usuario tiene muchos roles
-    public function roles()
+    // RELACIÓN: Un usuario pertenece a un rol (1:N)
+    public function role()
     {
-        // El segundo parámetro es el nombre de la tabla pivote que tú definiste
-        return $this->belongsToMany(Role::class, 'user_roles');
+        return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    // RELACIÓN: Un usuario puede tener un perfil de cliente comercial
+    public function customer()
+    {
+        return $this->hasOne(Customer::class, 'user_id');
     }
 
     // MÉTODO HELPER: Verifica si el usuario tiene un rol específico por slug
     public function hasRole(string $roleSlug): bool
     {
-        return $this->roles()->where('slug', $roleSlug)->exists();
+        return $this->role && $this->role->slug === $roleSlug;
     }
 
     // MÉTODO HELPER: Verifica si el usuario tiene un permiso específico
     public function hasPermission(string $permissionSlug): bool
     {
-        return $this->roles()->whereHas('permissions', function ($query) use ($permissionSlug) {
-            $query->where('slug', $permissionSlug);
-        })->exists();
+        return $this->role && $this->role->permissions()->where('slug', $permissionSlug)->exists();
     }
 }

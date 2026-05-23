@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Permission extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     protected $fillable = [
         'name',
@@ -20,9 +21,9 @@ class Permission extends Model
         'is_active' => 'boolean',
     ];
 
-    // RELACIÓN: Un permiso pertenece a muchos roles
+    // RELACIÓN: Un permiso pertenece a muchos roles (N:M a través de role_permission)
     public function roles()
     {
-        return $this->belongsToMany(Role::class, 'role_permissions');
+        return $this->belongsToMany(Role::class, 'role_permission', 'permission_id', 'role_id');
     }
 }
