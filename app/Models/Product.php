@@ -24,6 +24,7 @@ class Product extends Model
         'production_lead_time_days',
         'attributes',
         'is_active',
+        'is_featured',
     ];
 
     protected $casts = [
@@ -33,6 +34,7 @@ class Product extends Model
         'production_lead_time_days' => 'integer',
         'attributes' => 'array',
         'is_active' => 'boolean',
+        'is_featured' => 'boolean',
     ];
 
     // Relación: Un producto pertenece a una categoría
@@ -51,5 +53,10 @@ class Product extends Model
     public function inventory(): HasOne
     {
         return $this->hasOne(Inventory::class, 'product_id');
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class, 'product_id');
     }
 }

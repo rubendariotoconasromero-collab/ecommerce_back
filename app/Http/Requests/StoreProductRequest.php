@@ -22,7 +22,7 @@ class StoreProductRequest extends FormRequest
             'cost_price'                => 'required|numeric|min:0',
             'sale_price'                => 'required|numeric|min:0',
             'production_lead_time_days' => 'required|integer|min:0',
-            'attributes'                => 'nullable', 
+            'attributes'                => 'nullable|array',
             'is_active'                 => 'boolean',
             'is_featured'               => 'boolean'
         ];

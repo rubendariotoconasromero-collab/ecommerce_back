@@ -3,53 +3,45 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
-use Illuminate\Http\Request;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
-use App\Http\Requests\PublicProductRequest;
+use App\Models\Product;
+use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        // Iniciamos la consulta cargando la relación de categoría e imágenes
         $query = Product::with(['category:id,name,slug,image_url', 'images']);
 
-        // Filtro por Destacados: ?featured=true
-        if ($request->has('featured') && $request->featured == 'true') {
+        if ($request->boolean('featured')) {
             $query->where('is_featured', true);
         }
 
-        // Filtro por Categoría: Usamos filled() para ignorar strings vacíos
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
         }
 
-        // Filtro por Estado: Captura tanto 'true' como 'false' del select de Vue
         if ($request->filled('active')) {
-            $isActive = filter_var($request->active, FILTER_VALIDATE_BOOLEAN);
-            $query->where('is_active', $isActive);
+            $query->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN));
         }
 
-        // Búsqueda por nombre o SKU
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
                   ->orWhere('sku', 'LIKE', "%{$search}%");
             });
         }
 
-        // Si es una petición pública sin paginación (ej: landing page)
-        if ($request->has('nopaginate') && $request->nopaginate == 'true') {
-            return response()->json($query->orderBy('id', 'desc')->get());
+        $query->orderBy('created_at', 'desc');
+
+        // Sin paginación: solo para catálogos públicos compactos, con límite máximo
+        if ($request->boolean('nopaginate')) {
+            return response()->json($query->limit(100)->get());
         }
 
-        // Paginación de 15 elementos para el panel administrativo
-        $products = $query->orderBy('id', 'desc')->paginate(15);
-
-        return response()->json($products);
+        return response()->json($query->paginate(15));
     }
 
     public function store(StoreProductRequest $request)
@@ -58,13 +50,13 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Producto registrado exitosamente',
-            'product' => $product->load(['category', 'images'])
+            'product' => $product->load(['category', 'images']),
         ], 201);
     }
 
     public function show(Product $product)
     {
-        return response()->json($product->load(['category', 'images']));
+        return response()->json($product->load(['category', 'images', 'inventory']));
     }
 
     public function update(UpdateProductRequest $request, Product $product)
@@ -73,13 +65,20 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Producto actualizado exitosamente',
-            'product' => $product->load(['category', 'images'])
+            'product' => $product->load(['category', 'images']),
         ]);
     }
 
     public function destroy(Product $product)
     {
+        if ($product->orderItems()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar un producto que tiene órdenes registradas.',
+            ], 422);
+        }
+
         $product->delete();
+
         return response()->json(['message' => 'Producto eliminado correctamente']);
     }
 }

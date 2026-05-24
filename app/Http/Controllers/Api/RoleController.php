@@ -12,8 +12,8 @@ class RoleController extends Controller
 {
     public function index()
     {
-        // Traemos todos los roles con la cantidad de usuarios que lo tienen
         $roles = Role::withCount('users')->with('permissions:id,name,module')->get();
+
         return response()->json($roles);
     }
 
@@ -21,22 +21,24 @@ class RoleController extends Controller
     {
         $validated = $request->validate([
             'name'          => 'required|string|max:100|unique:roles,name',
+            'description'   => 'nullable|string',
             'permissions'   => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id'
+            'permissions.*' => 'exists:permissions,id',
         ]);
 
-        // Autogenerar el slug a partir del nombre (Ej: "Gestor de Ventas" -> "gestor-de-ventas")
-        $validated['slug'] = Str::slug($validated['name']);
+        $role = Role::create([
+            'name'        => $validated['name'],
+            'slug'        => Str::slug($validated['name']),
+            'description' => $validated['description'] ?? null,
+        ]);
 
-        $role = Role::create($validated);
-
-        if ($request->has('permissions')) {
-            $role->permissions()->sync($request->permissions);
+        if (!empty($validated['permissions'])) {
+            $role->permissions()->sync($validated['permissions']);
         }
 
         return response()->json([
             'message' => 'Rol creado exitosamente',
-            'role'    => $role->load('permissions')
+            'role'    => $role->load('permissions'),
         ], 201);
     }
 
@@ -49,35 +51,43 @@ class RoleController extends Controller
     {
         $validated = $request->validate([
             'name'          => ['required', 'string', 'max:100', Rule::unique('roles')->ignore($role->id)],
-            'is_active'     => 'boolean',
+            'description'   => 'nullable|string',
+            'is_active'     => 'nullable|boolean',
             'permissions'   => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id'
+            'permissions.*' => 'exists:permissions,id',
         ]);
 
-        if (isset($validated['name'])) {
-            $validated['slug'] = Str::slug($validated['name']);
-        }
-
-        $role->update($validated);
+        $role->update([
+            'name'        => $validated['name'],
+            'slug'        => Str::slug($validated['name']),
+            'description' => $validated['description'] ?? $role->description,
+            'is_active'   => $validated['is_active'] ?? $role->is_active,
+        ]);
 
         if ($request->has('permissions')) {
-            $role->permissions()->sync($request->permissions);
+            $role->permissions()->sync($validated['permissions'] ?? []);
         }
 
         return response()->json([
             'message' => 'Rol actualizado exitosamente',
-            'role'    => $role->load('permissions')
+            'role'    => $role->load('permissions'),
         ]);
     }
 
     public function destroy(Role $role)
     {
-        // Protección de seguridad: Evitar borrar el Super Admin
         if ($role->slug === 'super-admin') {
-            return response()->json(['message' => 'No puedes eliminar el rol principal'], 403);
+            return response()->json(['message' => 'No puedes eliminar el rol principal.'], 403);
+        }
+
+        if ($role->users()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar un rol que tiene usuarios asignados.',
+            ], 422);
         }
 
         $role->delete();
+
         return response()->json(['message' => 'Rol eliminado correctamente']);
     }
 }

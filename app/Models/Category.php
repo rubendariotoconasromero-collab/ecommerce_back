@@ -6,14 +6,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Category extends Model
 {
     use HasFactory, HasUuids;
 
-    protected $fillable = ['parent_id', 'name', 'slug', 'is_active'];
+    protected $fillable = ['parent_id', 'name', 'slug', 'description', 'image_url', 'is_active'];
 
     protected $casts = [
         'is_active' => 'boolean',
@@ -37,10 +36,16 @@ class Category extends Model
         return $this->hasMany(Product::class);
     }
 
-    // Mutator: Generar automáticamente el slug cuando se asigna un nombre
-    public function setNameAttribute($value)
+    public function getImageUrlAttribute(): ?string
     {
-        $this->attributes['name'] = $value;
-        $this->attributes['slug'] = Str::slug($value);
+        $value = $this->attributes['image_url'] ?? null;
+        if (!$value) {
+            return null;
+        }
+        // Compatibilidad: si ya es una URL completa (registros antiguos), devolverla tal cual
+        if (str_starts_with($value, 'http')) {
+            return $value;
+        }
+        return asset('storage/' . $value);
     }
 }

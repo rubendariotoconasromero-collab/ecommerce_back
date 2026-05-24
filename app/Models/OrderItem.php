@@ -14,7 +14,7 @@ class OrderItem extends Model
 
     protected $table = 'order_items';
 
-    // No maneja updated_at estándar
+    // created_at se gestiona por MySQL (useCurrent); no existe updated_at
     public $timestamps = false;
 
     protected $fillable = [
@@ -31,26 +31,28 @@ class OrderItem extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
-        'unit_cost' => 'decimal:2',
-        'unit_price' => 'decimal:2',
-        'subtotal' => 'decimal:2',
+        'quantity'    => 'integer',
+        'unit_cost'   => 'decimal:2',
+        'unit_price'  => 'decimal:2',
+        'subtotal'    => 'decimal:2',
         'line_profit' => 'decimal:2',
+        'created_at'  => 'datetime',
     ];
 
-    // RELACIÓN: El item de detalle pertenece a un pedido
+    // -------------------------------------------------------------------------
+    // Relaciones
+    // -------------------------------------------------------------------------
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class, 'order_id');
     }
 
-    // RELACIÓN: El item se vincula al producto catalogado
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
     }
 
-    // RELACIÓN: Un item puede generar órdenes de producción individuales
     public function productionOrders(): HasMany
     {
         return $this->hasMany(ProductionOrder::class, 'order_item_id');

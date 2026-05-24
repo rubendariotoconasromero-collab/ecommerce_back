@@ -6,73 +6,74 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductImage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ProductImageController extends Controller
 {
-    // Obtener todas las imágenes de un producto
-    public function index($productId)
+    public function index(Product $product)
     {
-        $images = ProductImage::where('product_id', $productId)
-                              ->orderBy('is_primary', 'desc') // La principal primero
-                              ->orderBy('created_at', 'asc')
-                              ->get();
-                              
+        $images = $product->images()
+                          ->orderBy('is_primary', 'desc')
+                          ->orderBy('sort_order', 'asc')
+                          ->get();
+
         return response()->json($images);
     }
 
-    // Subir una o varias imágenes
-    public function store(Request $request, $productId)
+    public function store(Request $request, Product $product)
     {
         $request->validate([
-            'images' => 'required|array',
-            'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:5120', // Máximo 5MB por imagen
+            'images'   => 'required|array|max:10',
+            'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:5120',
         ]);
 
-        $product = Product::findOrFail($productId);
-        $uploadedImages = [];
+        $uploadedImages = DB::transaction(function () use ($request, $product) {
+            $result = [];
+            $alreadyHasImages = $product->images()->exists();
 
-        foreach ($request->file('images') as $file) {
-            // Subir archivo al disco público
-            $path = $file->store("products/{$product->id}", 'public');
+            foreach ($request->file('images') as $index => $file) {
+                $path = $file->store("products/{$product->id}", 'public');
 
-            // Si es la primera imagen, la hacemos principal por defecto
-            $isFirst = $product->images()->count() === 0 && count($uploadedImages) === 0;
+                $isPrimary = !$alreadyHasImages && $index === 0;
 
-            $image = ProductImage::create([
-                'product_id' => $product->id,
-                'image_path' => $path,
-                'is_primary' => $isFirst,
-            ]);
+                $result[] = ProductImage::create([
+                    'product_id' => $product->id,
+                    'image_path' => $path,
+                    'is_primary' => $isPrimary,
+                    'sort_order' => $product->images()->count() + $index,
+                ]);
+            }
 
-            $uploadedImages[] = $image;
-        }
+            return $result;
+        });
 
         return response()->json([
             'message' => 'Imágenes subidas correctamente',
-            'images' => $uploadedImages
+            'images'  => $uploadedImages,
         ], 201);
     }
 
-    // Marcar una imagen como principal
-    public function setPrimary($productId, $imageId)
+    public function setPrimary(Product $product, ProductImage $image)
     {
-        // 1. Quitar el primary a todas las imágenes de este producto
-        ProductImage::where('product_id', $productId)->update(['is_primary' => false]);
+        if ($image->product_id !== $product->id) {
+            return response()->json(['message' => 'La imagen no pertenece a este producto.'], 404);
+        }
 
-        // 2. Asignar el primary a la seleccionada
-        $image = ProductImage::where('product_id', $productId)->findOrFail($imageId);
-        $image->update(['is_primary' => true]);
+        DB::transaction(function () use ($product, $image) {
+            ProductImage::where('product_id', $product->id)->update(['is_primary' => false]);
+            $image->update(['is_primary' => true]);
+        });
 
         return response()->json(['message' => 'Imagen principal actualizada']);
     }
 
-    // Eliminar una imagen
-    public function destroy($productId, $imageId)
+    public function destroy(Product $product, ProductImage $image)
     {
-        $image = ProductImage::where('product_id', $productId)->findOrFail($imageId);
+        if ($image->product_id !== $product->id) {
+            return response()->json(['message' => 'La imagen no pertenece a este producto.'], 404);
+        }
 
-        // Eliminar archivo físico del servidor
         if (Storage::disk('public')->exists($image->image_path)) {
             Storage::disk('public')->delete($image->image_path);
         }
@@ -80,12 +81,9 @@ class ProductImageController extends Controller
         $wasPrimary = $image->is_primary;
         $image->delete();
 
-        // Si borramos la principal, asignamos la siguiente disponible como principal
         if ($wasPrimary) {
-            $nextImage = ProductImage::where('product_id', $productId)->first();
-            if ($nextImage) {
-                $nextImage->update(['is_primary' => true]);
-            }
+            $next = ProductImage::where('product_id', $product->id)->orderBy('sort_order')->first();
+            $next?->update(['is_primary' => true]);
         }
 
         return response()->json(['message' => 'Imagen eliminada']);

@@ -3,22 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Http\Requests\User\StoreUserRequest;
+use App\Http\Requests\User\UpdateUserRequest;
+use App\Http\Resources\UserResource;
 use App\Models\Customer;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
-    // 1. Listar Usuarios (Con paginación, búsqueda y carga de perfil comercial)
     public function index(Request $request)
     {
         $query = User::with(['role:id,name,slug', 'customer']);
 
-        // Búsqueda cruzada inteligente entre usuarios y perfiles de cliente
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -30,28 +30,14 @@ class UserController extends Controller
             });
         }
 
-        return response()->json($query->paginate(10));
+        return UserResource::collection($query->paginate(15));
     }
 
-    // 2. Crear Usuario y Asignar Rol / Perfil Comercial
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $validated = $request->validate([
-            'role_id'       => 'required|exists:roles,id',
-            'name'          => 'required|string|max:255',
-            'email'         => 'required|string|email|max:255|unique:users',
-            'password'      => 'required|string|min:8',
-            'phone'         => 'nullable|string|max:30',
-            'is_active'     => 'nullable|boolean',
-            
-            // Campos comerciales para perfil de cliente (opcionales)
-            'customer_type' => 'nullable|in:individual,business,company',
-            'business_name' => 'nullable|string|max:255',
-            'tax_id'        => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         return DB::transaction(function () use ($validated, $request) {
-            // 1. Crear el usuario de acceso
             $user = User::create([
                 'role_id'   => $validated['role_id'],
                 'name'      => $validated['name'],
@@ -61,17 +47,10 @@ class UserController extends Controller
                 'is_active' => $validated['is_active'] ?? true,
             ]);
 
-            // 2. Si se provee información comercial, se crea el perfil de cliente
-            if ($request->has('customer_type')) {
-                // Compatibilidad: mapeamos 'company' a 'business' de la DB
-                $type = $validated['customer_type'];
-                if ($type === 'company') {
-                    $type = 'business';
-                }
-
+            if ($request->filled('customer_type')) {
                 Customer::create([
                     'user_id'       => $user->id,
-                    'customer_type' => $type,
+                    'customer_type' => $validated['customer_type'],
                     'name'          => $validated['name'],
                     'email'         => $validated['email'],
                     'business_name' => $validated['business_name'] ?? null,
@@ -81,44 +60,29 @@ class UserController extends Controller
             }
 
             return response()->json([
-                'message' => 'Usuario y perfil creados exitosamente',
-                'user'    => $user->load('role', 'customer')
+                'message' => 'Usuario creado exitosamente',
+                'user'    => new UserResource($user->load('role', 'customer')),
             ], 201);
         });
     }
 
-    // 3. Ver un Usuario Específico
     public function show(User $user)
     {
-        return response()->json($user->load('role', 'customer'));
+        return new UserResource($user->load('role', 'customer'));
     }
 
-    // 4. Actualizar Usuario y Perfil Comercial
-    public function update(Request $request, User $user)
+    public function update(UpdateUserRequest $request, User $user)
     {
-        $validated = $request->validate([
-            'role_id'       => 'nullable|exists:roles,id',
-            'name'          => 'required|string|max:255',
-            'email'         => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'phone'         => 'nullable|string|max:30',
-            'is_active'     => 'nullable|boolean',
-            'password'      => 'nullable|string|min:8',
-            
-            // Campos comerciales para actualizar
-            'customer_type' => 'nullable|in:individual,business,company',
-            'business_name' => 'nullable|string|max:255',
-            'tax_id'        => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         return DB::transaction(function () use ($validated, $request, $user) {
-            // 1. Actualizar datos de usuario
             $userData = [
                 'name'  => $validated['name'],
                 'email' => $validated['email'],
                 'phone' => $validated['phone'] ?? null,
             ];
 
-            if ($request->has('role_id')) {
+            if ($request->filled('role_id')) {
                 $userData['role_id'] = $validated['role_id'];
             }
 
@@ -132,17 +96,11 @@ class UserController extends Controller
 
             $user->update($userData);
 
-            // 2. Si se suministra customer_type, actualizamos o creamos el perfil de cliente
-            if ($request->has('customer_type')) {
-                $type = $validated['customer_type'];
-                if ($type === 'company') {
-                    $type = 'business';
-                }
-
+            if ($request->filled('customer_type')) {
                 $user->customer()->updateOrCreate(
                     ['user_id' => $user->id],
                     [
-                        'customer_type' => $type,
+                        'customer_type' => $validated['customer_type'],
                         'name'          => $validated['name'],
                         'email'         => $validated['email'],
                         'business_name' => $validated['business_name'] ?? null,
@@ -153,16 +111,24 @@ class UserController extends Controller
             }
 
             return response()->json([
-                'message' => 'Usuario y perfil comercial actualizados exitosamente',
-                'user'    => $user->load('role', 'customer')
+                'message' => 'Usuario actualizado exitosamente',
+                'user'    => new UserResource($user->load('role', 'customer')),
             ]);
         });
     }
 
-    // 5. Eliminar (Borrado Lógico)
-    public function destroy(User $user)
+    public function destroy(Request $request, User $user)
     {
-        $user->delete(); // Ejecuta SoftDeletes nativo de Laravel
+        if ($request->user()->id === $user->id) {
+            return response()->json(['message' => 'No puedes eliminar tu propia cuenta.'], 403);
+        }
+
+        if ($user->role && $user->role->slug === 'super-admin') {
+            return response()->json(['message' => 'No se puede eliminar al super administrador.'], 403);
+        }
+
+        $user->delete();
+
         return response()->json(['message' => 'Usuario eliminado correctamente']);
     }
 }
