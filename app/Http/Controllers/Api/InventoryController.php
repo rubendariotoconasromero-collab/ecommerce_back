@@ -2,19 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Inventory\AdjustInventoryRequest;
 use App\Http\Resources\InventoryResource;
 use App\Models\Inventory;
 use App\Models\Product;
-use App\Services\InventoryService;
 use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
-    public function __construct(private readonly InventoryService $inventoryService) {}
-
     /**
      * GET /api/inventory
      * Lista paginada del inventario con filtros:
@@ -52,7 +47,6 @@ class InventoryController extends Controller
             $query->where('products.is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN));
         }
 
-        // Filtro de bajo stock: qty_available - qty_reserved <= reorder_point
         if ($request->boolean('low_stock')) {
             $query->whereRaw('(inventory.qty_available - inventory.qty_reserved) <= inventory.reorder_point');
         }
@@ -78,46 +72,28 @@ class InventoryController extends Controller
     }
 
     /**
-     * POST /api/inventory/{product}/adjust
-     * Ajuste manual de stock por un administrador.
-     *
-     * Body: { qty_available: int, reorder_point: int, reason: string }
-     *
-     * Permite reducir qty_available por debajo de qty_reserved (se informa advertencia).
+     * PATCH /api/inventory/{product}/reorder-point
+     * Actualiza únicamente el punto de reorden (stock mínimo de alerta).
      */
-    public function adjust(AdjustInventoryRequest $request, Product $product)
+    public function updateReorderPoint(Request $request, Product $product)
     {
+        $request->validate([
+            'reorder_point' => 'required|integer|min:0',
+        ], [
+            'reorder_point.required' => 'El punto de reorden es obligatorio.',
+            'reorder_point.integer'  => 'El punto de reorden debe ser un número entero.',
+            'reorder_point.min'      => 'El punto de reorden no puede ser negativo.',
+        ]);
+
         $inventory = Inventory::where('product_id', $product->id)->firstOrFail();
+        $inventory->reorder_point = $request->reorder_point;
+        $inventory->save();
 
-        $validated = $request->validated();
+        $inventory->load('product.category:id,name');
 
-        $newQtyAvailable = $validated['qty_available'];
-        $newReorderPoint = $validated['reorder_point'] ?? $inventory->reorder_point;
-
-        $updated = $this->inventoryService->adjust(
-            $inventory,
-            $newQtyAvailable,
-            $newReorderPoint,
-            $validated['reason']
-        );
-
-        $updated->load('product.category:id,name');
-
-        $response = [
-            'message'   => 'Inventario ajustado correctamente.',
-            'inventory' => new InventoryResource($updated),
-        ];
-
-        // Advertencia si hay conflicto con stock reservado
-        if ($newQtyAvailable < $updated->qty_reserved) {
-            $response['warning'] = sprintf(
-                'El nuevo stock disponible (%d) es menor al stock reservado (%d). Hay %d unidad(es) en riesgo.',
-                $newQtyAvailable,
-                $updated->qty_reserved,
-                $updated->qty_reserved - $newQtyAvailable
-            );
-        }
-
-        return response()->json($response);
+        return response()->json([
+            'message'   => 'Punto de reorden actualizado.',
+            'inventory' => new InventoryResource($inventory),
+        ]);
     }
 }

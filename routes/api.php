@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\InventoryAdjustmentController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\OrderReturnController;
@@ -73,7 +74,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // --- Módulo Inventario ---
     Route::get('/inventory', [InventoryController::class, 'index']);
     Route::get('/inventory/{product}', [InventoryController::class, 'show']);
-    Route::post('/inventory/{product}/adjust', [InventoryController::class, 'adjust']);
+    Route::patch('/inventory/{product}/reorder-point', [InventoryController::class, 'updateReorderPoint']);
+
+    // --- Ajustes de Stock (lotes multi-producto) ---
+    Route::get('/inventory-adjustments', [InventoryAdjustmentController::class, 'index']);
+    Route::post('/inventory-adjustments', [InventoryAdjustmentController::class, 'store']);
+    Route::get('/inventory-adjustments/{batch}', [InventoryAdjustmentController::class, 'show']);
 
     // --- Módulo Órdenes ---
     Route::get('/orders', [OrderController::class, 'index']);

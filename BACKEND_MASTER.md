@@ -1,6 +1,6 @@
 # BACKEND MASTER — Ecommerce Codesoft (SOLUPLAST)
 
-> Documento de referencia técnica completo. Generado el 2026-05-24.  
+> Documento de referencia técnica completo. Generado el 2026-05-24. Última actualización: 2026-05-25 (módulo Ajustes de Stock).  
 > Stack: **Laravel 12** · **MySQL** · **Laravel Sanctum** · **UUID** primary keys en todas las entidades de negocio.
 
 ---
@@ -18,6 +18,8 @@
 9. [Almacenamiento de Archivos](#9-almacenamiento-de-archivos)
 10. [Seeders y Datos Iniciales](#10-seeders-y-datos-iniciales)
 11. [Gaps y Pendientes](#11-gaps-y-pendientes)
+
+> **Cambios en 2026-05-25:** Se agregó el módulo **Ajustes de Stock por Lote** (secciones 2.19, 2.20, 3.14, 3.15, 5.10b, 6.3). Nuevas tablas: `inventory_adjustment_batches` e `inventory_adjustment_lines`.
 
 ---
 
@@ -69,6 +71,10 @@ products ──→ inventory (1:1)
 products ──→ products_images (1:N)
 products ──→ categories (N:1)
 categories ──→ categories (auto-referencia parent_id)
+
+inventory_adjustment_batches ──→ inventory_adjustment_lines (1:N)
+inventory_adjustment_batches ──→ users (created_by, N:1)
+inventory_adjustment_lines   ──→ products (N:1)
 ```
 
 ---
@@ -398,6 +404,60 @@ PK compuesta: `(role_id, permission_id)`
 
 ---
 
+### 2.19 Tabla: `inventory_adjustment_batches`
+
+> Cabecera de cada lote de ajuste de inventario. Un lote puede contener uno o varios productos.
+
+| Columna          | Tipo                                                | Restricciones                          |
+|------------------|-----------------------------------------------------|----------------------------------------|
+| id               | UUID                                                | PK                                     |
+| batch_number     | varchar(30)                                         | UNIQUE, NOT NULL (ej: AJU-2026-00001)  |
+| adjustment_type  | ENUM('entry','exit','initial_stock','correction')   | NOT NULL                               |
+| notes            | text                                                | nullable                               |
+| created_by       | UUID                                                | nullable, FK → users.id, SET NULL      |
+| confirmed_at     | timestamp                                           | nullable (se llena al crear el lote)   |
+| created_at       | timestamp                                           |                                        |
+| updated_at       | timestamp                                           |                                        |
+
+**Tipos de ajuste:**
+| Valor           | Descripción                            | Efecto en stock      |
+|-----------------|----------------------------------------|----------------------|
+| `entry`         | Ingreso de mercadería                  | stock += cantidad    |
+| `exit`          | Salida de mercadería                   | stock -= cantidad    |
+| `initial_stock` | Carga de stock inicial                 | stock += cantidad    |
+| `correction`    | Corrección / Auditoría (libre)         | stock += cantidad (signed) |
+
+**Numeración automática:** El `batch_number` se genera en `InventoryAdjustmentService` con el formato `AJU-YYYY-NNNNN`. El contador se reinicia por año.
+
+---
+
+### 2.20 Tabla: `inventory_adjustment_lines`
+
+> Detalle de cada línea dentro de un lote. Guarda snapshot del estado del producto al momento del ajuste.
+
+| Columna              | Tipo          | Restricciones                                    |
+|----------------------|---------------|--------------------------------------------------|
+| id                   | UUID          | PK                                               |
+| batch_id             | UUID          | FK → inventory_adjustment_batches.id, CASCADE    |
+| product_id           | UUID          | FK → products.id, RESTRICT                       |
+| product_name         | varchar(200)  | Snapshot del nombre al momento del ajuste        |
+| product_sku          | varchar(100)  | Snapshot del SKU al momento del ajuste           |
+| previous_qty         | integer       | Stock disponible ANTES del ajuste                |
+| qty_delta            | integer       | Cambio aplicado (positivo=entrada, negativo=salida) |
+| new_qty              | integer       | Stock disponible DESPUÉS del ajuste              |
+| previous_cost_price  | decimal(12,2) | nullable — Precio de costo antes del ajuste      |
+| new_cost_price       | decimal(12,2) | nullable — Nuevo precio de costo (si se actualizó)|
+| previous_sale_price  | decimal(12,2) | nullable — Precio de venta antes del ajuste      |
+| new_sale_price       | decimal(12,2) | nullable — Nuevo precio de venta (si se actualizó)|
+| line_notes           | text          | nullable — Nota específica de esta línea         |
+| created_at           | timestamp     | DEFAULT CURRENT_TIMESTAMP                        |
+
+> **Sin `updated_at`** — las líneas son inmutables. No se editan post-creación.  
+> La relación `batch_id → batch` permite reconstruir el historial completo de un lote.  
+> `new_qty = max(0, previous_qty + qty_delta)` — nunca se permite stock negativo.
+
+---
+
 ### 2.18 Tablas auxiliares de Laravel
 
 | Tabla                    | Propósito                              |
@@ -647,6 +707,44 @@ const TRANSITIONS = [
 - `can_start`, `can_complete`, `can_cancel` — booleanos de acción
 
 **Scopes:** `byStatus()`, `active()`, `forOrder()`, `forWorker()`, `unassigned()`
+
+---
+
+### 3.14 `InventoryAdjustmentBatch`
+```
+Traits: HasUuids
+tabla: inventory_adjustment_batches
+```
+
+**Constantes:**
+```php
+const TYPES       = ['entry', 'exit', 'initial_stock', 'correction'];
+const TYPE_LABELS = ['entry' => 'Ingreso de Mercadería', 'exit' => 'Salida de Mercadería', ...];
+```
+
+| Relación     | Tipo    | Detalle                                |
+|--------------|---------|----------------------------------------|
+| `creator()`  | BelongsTo| User (quien registró el lote)         |
+| `lines()`    | HasMany | InventoryAdjustmentLine                |
+
+**Atributos calculados:**
+- `type_label` — etiqueta legible del tipo de ajuste
+
+---
+
+### 3.15 `InventoryAdjustmentLine`
+```
+Traits: HasUuids
+tabla: inventory_adjustment_lines
+public $timestamps = false
+```
+
+| Relación     | Tipo      | Detalle                  |
+|--------------|-----------|--------------------------|
+| `batch()`    | BelongsTo | InventoryAdjustmentBatch |
+| `product()`  | BelongsTo | Product                  |
+
+> Inmutable: solo `created_at`, sin `updated_at`. El historial de ajustes nunca se edita.
 
 ---
 
@@ -1023,6 +1121,58 @@ Response 200: { "message": "...", "inventory": InventoryResource, "warning"?: ".
 
 ---
 
+### 5.10b Ajustes de Stock por Lote (`/api/inventory-adjustments`)
+
+> Nuevo módulo (2026-05-25). Permite registrar ajustes de inventario para múltiples productos en un solo lote transaccional.
+
+#### `GET /api/inventory-adjustments`
+```
+Filtros: ?type=entry|exit|initial_stock|correction  ?page=1
+Paginación: 20 por página
+Ordenado por: confirmed_at DESC (más reciente primero)
+Incluye: creator (id, name), lines_count
+```
+
+#### `POST /api/inventory-adjustments`
+```json
+Body: {
+  "adjustment_type": "entry|exit|initial_stock|correction (required)",
+  "notes": "string max:1000 (nullable)",
+  "lines": [
+    {
+      "product_id":     "uuid exists:products (required)",
+      "quantity":       "integer min:1 (required)",
+      "new_cost_price": "numeric min:0 (nullable — actualiza products.cost_price)",
+      "new_sale_price": "numeric min:0 (nullable — actualiza products.sale_price)",
+      "line_notes":     "string max:500 (nullable)"
+    }
+  ]
+}
+
+Proceso interno (InventoryAdjustmentService::createBatch):
+  1. Genera batch_number correlativo (AJU-YYYY-NNNNN)
+  2. Carga inventarios con lockForUpdate (transacción atómica)
+  3. Para cada línea:
+     a. Calcula qty_delta según tipo (entry/initial_stock: +qty, exit: -qty, correction: +/-qty)
+     b. Calcula new_qty = max(0, previous_qty + qty_delta)
+     c. Guarda snapshot de precios anteriores
+     d. Actualiza inventory.qty_available
+     e. Si new_cost_price/new_sale_price → actualiza products
+  4. Crea registro de cabecera + todas las líneas en una sola transacción
+
+Response 201: { "message": "Ajuste AJU-2026-00001 registrado...", "batch": InventoryAdjustmentBatchResource }
+```
+
+> **Importante:** La operación es inmediata — no hay estado "draft". Al confirmar, el stock se actualiza en el momento.  
+> El campo `confirmed_at` se establece en `now()` al crear el lote.
+
+#### `GET /api/inventory-adjustments/{batch}`
+```
+Incluye: lines (detalle completo), creator
+```
+
+---
+
 ### 5.10 Órdenes (`/api/orders`)
 
 #### `GET /api/orders`
@@ -1319,6 +1469,24 @@ Todas las operaciones usan `lockForUpdate()` para evitar race conditions en conc
 | `completeProduction(productId, qty)`      | `qty_in_production -= qty`, `qty_available += qty` |
 
 **`InsufficientStockException`:** lanzada por `reserve()` cuando `qty_sellable < qty_solicitada`. Expone `->productName`, `->requested`, `->available`.
+
+---
+
+### 6.3 `InventoryAdjustmentService`
+
+**`createBatch(array $data, User $actor): InventoryAdjustmentBatch`**
+- Genera `batch_number` correlativo por año: `AJU-YYYY-NNNNN`
+- Carga productos e inventarios con `lockForUpdate()` dentro de una transacción
+- Calcula `qty_delta` según el tipo de ajuste:
+  - `entry` / `initial_stock`: `+quantity`
+  - `exit`: `-quantity`
+  - `correction`: `+quantity` (el usuario puede pasar valores positivos o negativos)
+- `new_qty = max(0, previous_qty + qty_delta)` — nunca stock negativo
+- Guarda snapshot de precios actuales (`previous_cost_price`, `previous_sale_price`)
+- Actualiza `inventory.qty_available` para cada producto
+- Si se proveen `new_cost_price` / `new_sale_price`, actualiza `products` tabla
+- Crea la cabecera y todas las líneas en una sola transacción atómica
+- Retorna el batch con relaciones `lines` y `creator` cargadas
 
 ---
 

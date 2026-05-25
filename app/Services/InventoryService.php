@@ -6,38 +6,9 @@ use App\Exceptions\InsufficientStockException;
 use App\Models\Inventory;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class InventoryService
 {
-    /**
-     * Ajuste manual de stock por parte de un administrador.
-     * Retorna el registro de inventario actualizado.
-     */
-    public function adjust(Inventory $inventory, int $newQtyAvailable, int $newReorderPoint, string $reason): Inventory
-    {
-        return DB::transaction(function () use ($inventory, $newQtyAvailable, $newReorderPoint, $reason) {
-            $fresh = Inventory::where('id', $inventory->id)->lockForUpdate()->firstOrFail();
-
-            $previousQty = $fresh->qty_available;
-
-            $fresh->qty_available  = $newQtyAvailable;
-            $fresh->reorder_point  = $newReorderPoint;
-            $fresh->save();
-
-            Log::info('inventory.adjusted', [
-                'product_id'   => $fresh->product_id,
-                'by_user_id'   => auth()->id(),
-                'from_qty'     => $previousQty,
-                'to_qty'       => $newQtyAvailable,
-                'reorder_point'=> $newReorderPoint,
-                'reason'       => $reason,
-            ]);
-
-            return $fresh->refresh();
-        });
-    }
-
     /**
      * Reserva stock al confirmar una orden.
      * Lanza InsufficientStockException si no hay stock vendible suficiente.
