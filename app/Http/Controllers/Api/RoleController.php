@@ -10,11 +10,18 @@ use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $roles = Role::withCount('users')->with('permissions:id,name,module')->get();
+        $query = Role::withCount('users')->with('permissions:id,name,module');
 
-        return response()->json($roles);
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where('name', 'LIKE', "%{$search}%")
+                  ->orWhere('slug', 'LIKE', "%{$search}%")
+                  ->orWhere('description', 'LIKE', "%{$search}%");
+        }
+
+        return response()->json($query->get());
     }
 
     public function store(Request $request)
@@ -77,17 +84,18 @@ class RoleController extends Controller
     public function destroy(Role $role)
     {
         if ($role->slug === 'super-admin') {
-            return response()->json(['message' => 'No puedes eliminar el rol principal.'], 403);
+            return response()->json(['message' => 'No puedes desactivar el rol principal.'], 403);
         }
 
-        if ($role->users()->exists()) {
-            return response()->json([
-                'message' => 'No se puede eliminar un rol que tiene usuarios asignados.',
-            ], 422);
-        }
+        $role->update(['is_active' => false]);
 
-        $role->delete();
+        return response()->json(['message' => 'Rol desactivado correctamente']);
+    }
 
-        return response()->json(['message' => 'Rol eliminado correctamente']);
+    public function restore(Role $role)
+    {
+        $role->update(['is_active' => true]);
+
+        return response()->json(['message' => 'Rol reactivado correctamente']);
     }
 }

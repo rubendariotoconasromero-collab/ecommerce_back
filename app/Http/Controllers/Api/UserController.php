@@ -16,7 +16,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::with(['role:id,name,slug', 'customer']);
+        $query = User::withTrashed()->with(['role:id,name,slug', 'customer']);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -127,8 +127,19 @@ class UserController extends Controller
             return response()->json(['message' => 'No se puede eliminar al super administrador.'], 403);
         }
 
+        $user->is_active = false;
+        $user->save();
         $user->delete();
 
         return response()->json(['message' => 'Usuario eliminado correctamente']);
+    }
+
+    public function restore($id)
+    {
+        $user = User::onlyTrashed()->findOrFail($id);
+        $user->restore();
+        $user->update(['is_active' => true]);
+
+        return response()->json(['message' => 'Usuario reactivado correctamente']);
     }
 }

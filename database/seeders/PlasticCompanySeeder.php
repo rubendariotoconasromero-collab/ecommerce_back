@@ -43,7 +43,7 @@ class PlasticCompanySeeder extends Seeder
         foreach ($categories as $cat) {
             $category = Category::updateOrCreate(
                 ['name' => $cat['name']],
-                ['is_active' => true]
+                ['slug' => Str::slug($cat['name']), 'is_active' => true]
             );
 
             // 3. Productos por Categoría

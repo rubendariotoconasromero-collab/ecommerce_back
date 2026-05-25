@@ -40,12 +40,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     // --- RBAC ---
+    Route::patch('users/{user}/restore', [UserController::class, 'restore'])->withTrashed();
     Route::apiResource('users', UserController::class);
+    Route::patch('roles/{role}/restore', [RoleController::class, 'restore']);
     Route::apiResource('roles', RoleController::class);
     Route::get('/permissions', [PermissionController::class, 'index']);
 
     // --- Catálogo ---
+    Route::patch('categories/{category}/restore', [CategoryController::class, 'restore']);
     Route::apiResource('categories', CategoryController::class);
+    Route::patch('products/{product}/restore', [ProductController::class, 'restore']);
     Route::apiResource('products', ProductController::class);
 
     // Galería de imágenes de producto

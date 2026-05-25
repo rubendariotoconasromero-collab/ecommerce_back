@@ -71,14 +71,15 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
-        if ($product->orderItems()->exists()) {
-            return response()->json([
-                'message' => 'No se puede eliminar un producto que tiene órdenes registradas.',
-            ], 422);
-        }
+        $product->update(['is_active' => false]);
 
-        $product->delete();
+        return response()->json(['message' => 'Producto desactivado correctamente']);
+    }
 
-        return response()->json(['message' => 'Producto eliminado correctamente']);
+    public function restore(Product $product)
+    {
+        $product->update(['is_active' => true]);
+
+        return response()->json(['message' => 'Producto reactivado correctamente']);
     }
 }

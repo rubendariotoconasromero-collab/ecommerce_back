@@ -13,7 +13,13 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Category::withCount('products')->orderBy('name', 'asc');
+        $query = Category::withCount('products')->orderBy('created_at', 'desc');
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where('name', 'LIKE', "%{$search}%")
+                  ->orWhere('slug', 'LIKE', "%{$search}%");
+        }
 
         if ($request->boolean('active')) {
             $query->where('is_active', true);
@@ -83,19 +89,15 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
-        if ($category->products()->exists()) {
-            return response()->json([
-                'message' => 'No se puede eliminar la categoría porque tiene productos asociados.',
-            ], 422);
-        }
+        $category->update(['is_active' => false]);
 
-        $rawPath = $category->getRawOriginal('image_url');
-        if ($rawPath && !str_starts_with($rawPath, 'http')) {
-            Storage::disk('public')->delete($rawPath);
-        }
+        return response()->json(['message' => 'Categoría desactivada correctamente']);
+    }
 
-        $category->delete();
+    public function restore(Category $category)
+    {
+        $category->update(['is_active' => true]);
 
-        return response()->json(['message' => 'Categoría eliminada correctamente']);
+        return response()->json(['message' => 'Categoría reactivada correctamente']);
     }
 }

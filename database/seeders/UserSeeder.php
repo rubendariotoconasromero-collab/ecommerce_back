@@ -20,7 +20,7 @@ class UserSeeder extends Seeder
 
         // 2. Crear el usuario Super Admin
         User::firstOrCreate(
-            ['email' => 'admin@tuecommerce.com'],
+            ['email' => 'admin@gmail.com'],
             [
                 'role_id'   => $superAdminRole->id,
                 'name'      => 'Administrador Principal',
