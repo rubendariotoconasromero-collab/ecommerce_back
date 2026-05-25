@@ -53,7 +53,7 @@ class CustomerController extends Controller
             $query->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN));
         }
 
-        $customers = $query->orderBy('name', 'asc')->paginate(15);
+        $customers = $query->orderBy('created_at', 'desc')->paginate(15);
 
         return CustomerResource::collection($customers);
     }

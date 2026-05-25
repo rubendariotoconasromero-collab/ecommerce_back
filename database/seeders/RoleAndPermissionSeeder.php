@@ -14,6 +14,8 @@ class RoleAndPermissionSeeder extends Seeder
         $permissions = [
             // Operaciones
             ['name' => 'Acceso al Módulo Pedidos', 'slug' => 'modulo-pedidos', 'module' => 'Operaciones'],
+            ['name' => 'Acceso al Módulo Clientes', 'slug' => 'modulo-clientes', 'module' => 'Operaciones'],
+            ['name' => 'Acceso al Módulo Inventario', 'slug' => 'modulo-inventario', 'module' => 'Operaciones'],
             
             // Catálogo
             ['name' => 'Acceso al Módulo Categorías', 'slug' => 'modulo-categorias', 'module' => 'Catálogo'],
@@ -33,17 +35,20 @@ class RoleAndPermissionSeeder extends Seeder
         // 2. Crear Roles Base
         $roleSuperAdmin = Role::firstOrCreate(['slug' => 'super-admin'], ['name' => 'Super Administrador']);
         $roleVentas = Role::firstOrCreate(['slug' => 'vendedor'], ['name' => 'Gestor de Ventas']);
+        $roleCliente = Role::firstOrCreate(['slug' => 'cliente'], ['name' => 'Cliente']);
         
         // 3. Asignar Permisos
         
         // El Super Admin tiene acceso a TODOS los módulos
         $roleSuperAdmin->permissions()->sync(Permission::all()->pluck('id'));
 
-        // El Vendedor solo accede a Pedidos y Catálogo
+        // El Vendedor solo accede a Pedidos, Catálogo, Clientes e Inventario
         $ventasPerms = Permission::whereIn('slug', [
             'modulo-pedidos', 
             'modulo-categorias', 
-            'modulo-productos'
+            'modulo-productos',
+            'modulo-clientes',
+            'modulo-inventario'
         ])->pluck('id');
         $roleVentas->permissions()->sync($ventasPerms);
     }
