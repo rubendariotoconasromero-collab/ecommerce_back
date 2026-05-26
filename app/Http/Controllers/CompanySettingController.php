@@ -21,7 +21,7 @@ class CompanySettingController extends Controller
 
     public function update(Request $request)
     {
-        $validated = $request->validate([
+        $request->validate([
             'company_name'      => 'nullable|string|max:255',
             'email'             => 'nullable|email|max:255',
             'phone'             => 'nullable|string|max:20',
@@ -31,36 +31,66 @@ class CompanySettingController extends Controller
             'whatsapp'          => 'nullable|string|max:20',
             'hero_title'        => 'nullable|string|max:255',
             'hero_subtitle'     => 'nullable|string|max:255',
-            'hero_image'        => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'hero_image'        => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
+            'hero_image_2'      => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
+            'hero_image_3'      => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
             'about_title'       => 'nullable|string|max:255',
             'about_description' => 'nullable|string',
-            'about_image'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'about_image'       => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
             'footer_text'       => 'nullable|string|max:255',
+            // Flags para eliminar imágenes del slider
+            'remove_hero_image'   => 'nullable|boolean',
+            'remove_hero_image_2' => 'nullable|boolean',
+            'remove_hero_image_3' => 'nullable|boolean',
         ]);
 
         $settings = CompanySetting::firstOrNew([]);
 
-        $settings->fill(array_filter($validated, fn($v) => $v !== null));
+        // Campos de texto simples
+        $textFields = [
+            'company_name', 'email', 'phone', 'address',
+            'facebook_url', 'instagram_url', 'whatsapp',
+            'hero_title', 'hero_subtitle',
+            'about_title', 'about_description', 'footer_text',
+        ];
 
-        if ($request->hasFile('hero_image')) {
-            if ($settings->hero_image_path) {
-                Storage::disk('public')->delete($settings->hero_image_path);
+        foreach ($textFields as $field) {
+            if ($request->has($field)) {
+                $settings->$field = $request->input($field);
             }
-            $settings->hero_image_path = $request->file('hero_image')->store('company', 'public');
         }
 
-        if ($request->hasFile('about_image')) {
-            if ($settings->about_image_path) {
-                Storage::disk('public')->delete($settings->about_image_path);
-            }
-            $settings->about_image_path = $request->file('about_image')->store('company', 'public');
-        }
+        // Procesamiento de imágenes (subida o eliminación)
+        $this->handleImage($request, $settings, 'hero_image',   'hero_image_path',   'remove_hero_image');
+        $this->handleImage($request, $settings, 'hero_image_2', 'hero_image_2_path', 'remove_hero_image_2');
+        $this->handleImage($request, $settings, 'hero_image_3', 'hero_image_3_path', 'remove_hero_image_3');
+        $this->handleImage($request, $settings, 'about_image',  'about_image_path',  null);
 
         $settings->save();
 
         return response()->json([
-            'message'  => 'Configuración actualizada correctamente',
-            'settings' => $settings,
+            'message'  => 'Configuración actualizada correctamente.',
+            'settings' => $settings->fresh(),
         ]);
+    }
+
+    private function handleImage(Request $request, CompanySetting $settings, string $fileKey, string $pathField, ?string $removeKey): void
+    {
+        // Eliminar imagen explícitamente solicitada
+        if ($removeKey && $request->boolean($removeKey)) {
+            if ($settings->$pathField) {
+                Storage::disk('public')->delete($settings->$pathField);
+            }
+            $settings->$pathField = null;
+            return;
+        }
+
+        // Subir nueva imagen
+        if ($request->hasFile($fileKey)) {
+            if ($settings->$pathField) {
+                Storage::disk('public')->delete($settings->$pathField);
+            }
+            $settings->$pathField = $request->file($fileKey)->store('company', 'public');
+        }
     }
 }
