@@ -47,6 +47,9 @@ class UserController extends Controller
                 'is_active' => $validated['is_active'] ?? true,
             ]);
 
+            // Si se envía customer_type, se crea también un perfil Customer vinculado.
+            // Esto permite que un empleado sea a la vez cliente del sistema.
+            // El frontend (UsuariosView) filtra !user.customer para mostrar solo personal interno.
             if ($request->filled('customer_type')) {
                 Customer::create([
                     'user_id'       => $user->id,

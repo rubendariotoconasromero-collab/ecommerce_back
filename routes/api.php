@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductImageController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\PublicOrderController;
 use App\Http\Controllers\CompanySettingController;
 
 /*
@@ -28,6 +30,7 @@ Route::get('/public/categories', [CategoryController::class, 'index']);
 Route::get('/public/settings', [CompanySettingController::class, 'show']);
 Route::get('/public/products', [ProductController::class, 'index']);
 Route::get('/public/products/{product}', [ProductController::class, 'show']);
+Route::post('/public/orders', [PublicOrderController::class, 'store']);
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +38,9 @@ Route::get('/public/products/{product}', [ProductController::class, 'show']);
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth:sanctum')->group(function () {
+
+    // --- Dashboard ---
+    Route::get('/dashboard', DashboardController::class);
 
     // --- Sesión ---
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -85,6 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/orders/{order}', [OrderController::class, 'show']);
+    Route::get('/orders/{order}/handlers', [OrderController::class, 'handlers']);
     Route::patch('/orders/{order}/status', [OrderController::class, 'changeStatus']);
     Route::delete('/orders/{order}', [OrderController::class, 'destroy']);
 

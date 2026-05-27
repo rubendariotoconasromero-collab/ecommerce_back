@@ -182,6 +182,22 @@ class OrderController extends Controller
     }
 
     /**
+     * GET /api/orders/{order}/handlers
+     * Devuelve el historial de gestión (auditoría) de la orden, ordenado cronológicamente.
+     */
+    public function handlers(Order $order)
+    {
+        $handlers = $order->handlers()
+            ->orderBy('handled_at', 'asc')
+            ->get(['id', 'user_id', 'handler_name', 'handler_role', 'action_taken', 'notes', 'handled_at']);
+
+        return response()->json([
+            'order_id' => $order->id,
+            'data'     => $handlers,
+        ]);
+    }
+
+    /**
      * DELETE /api/orders/{order}
      * Solo cancela órdenes en estado 'pending'.
      * Para cancelar desde otros estados usar PATCH /status.

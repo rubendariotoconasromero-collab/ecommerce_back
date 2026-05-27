@@ -10,7 +10,7 @@ class StoreInventoryAdjustmentRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->hasPermission('modulo-inventario') ?? false;
     }
 
     public function rules(): array

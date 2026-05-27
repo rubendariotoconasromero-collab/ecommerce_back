@@ -10,7 +10,7 @@ class StoreReturnRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->hasPermission('modulo-pedidos') ?? false;
     }
 
     public function rules(): array

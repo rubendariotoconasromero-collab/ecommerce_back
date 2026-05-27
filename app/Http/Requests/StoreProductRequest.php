@@ -8,7 +8,7 @@ class StoreProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->hasPermission('modulo-productos') ?? false;
     }
 
     public function rules(): array

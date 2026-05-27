@@ -51,7 +51,7 @@ class OrderService
      * - El stock NO se reserva al crear: se reserva al confirmar.
      * - La fecha de entrega se calcula si no se proporciona.
      */
-    public function create(array $data, User $actor): Order
+    public function create(array $data, ?User $actor): Order
     {
         return DB::transaction(function () use ($data, $actor) {
 
@@ -83,10 +83,10 @@ class OrderService
             $expectedDelivery = $data['expected_delivery_date']
                 ?? $this->estimateDeliveryDate($products, $data['items']);
 
-            // 5. Crear la orden
+            // 5. Crear la orden (user_id null cuando proviene de la tienda pública)
             $order = Order::create([
                 'customer_id'           => $data['customer_id'],
-                'user_id'               => $actor->id,
+                'user_id'               => $actor?->id,
                 'total_amount'          => $totalAmount,
                 'status'                => 'pending',
                 'expected_delivery_date'=> $expectedDelivery,
@@ -100,12 +100,24 @@ class OrderService
             }
 
             // 7. Registrar en el historial
-            $this->recordHandler(
-                $order,
-                $actor,
-                'Orden creada en estado pendiente.',
-                $data['notes'] ?? null
-            );
+            if ($actor) {
+                $this->recordHandler(
+                    $order,
+                    $actor,
+                    'Orden creada en estado pendiente.',
+                    $data['notes'] ?? null
+                );
+            } else {
+                // Pedido registrado desde la tienda en línea por el cliente
+                \App\Models\OrderHandler::create([
+                    'order_id'     => $order->id,
+                    'user_id'      => null,
+                    'handler_name' => 'Cliente Web',
+                    'handler_role' => 'Cliente',
+                    'action_taken' => 'Pedido registrado desde la tienda en línea.',
+                    'notes'        => $data['notes'] ?? null,
+                ]);
+            }
 
             return $order->load(['customer:id,name,email,customer_type,business_name', 'items']);
         });
@@ -181,7 +193,19 @@ class OrderService
     {
         $order->loadMissing('items');
 
+        // Carga los productos de una sola vez para evitar N+1 y validar estado activo
+        $productIds = $order->items->pluck('product_id')->unique();
+        $products   = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
         foreach ($order->items as $item) {
+            $product = $products->get($item->product_id);
+
+            if (!$product || !$product->is_active) {
+                throw new \InvalidArgumentException(
+                    "El producto '{$item->product_name}' fue desactivado y ya no puede ser confirmado en esta orden."
+                );
+            }
+
             $this->inventoryService->reserve(
                 $item->product_id,
                 $item->quantity,

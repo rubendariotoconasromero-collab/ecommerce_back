@@ -1,6 +1,6 @@
 # BACKEND MASTER — Ecommerce Codesoft (SOLUPLAST)
 
-> Documento de referencia técnica completo. Generado el 2026-05-24. Última actualización: 2026-05-25 (módulo Ajustes de Stock).  
+> Documento de referencia técnica completo. Generado el 2026-05-24. Última actualización: 2026-05-27 (gaps resueltos; endpoints /dashboard y /orders/{order}/handlers).  
 > Stack: **Laravel 12** · **MySQL** · **Laravel Sanctum** · **UUID** primary keys en todas las entidades de negocio.
 
 ---
@@ -19,7 +19,8 @@
 10. [Seeders y Datos Iniciales](#10-seeders-y-datos-iniciales)
 11. [Gaps y Pendientes](#11-gaps-y-pendientes)
 
-> **Cambios en 2026-05-25:** Se agregó el módulo **Ajustes de Stock por Lote** (secciones 2.19, 2.20, 3.14, 3.15, 5.10b, 6.3). Nuevas tablas: `inventory_adjustment_batches` e `inventory_adjustment_lines`.
+> **Cambios en 2026-05-25:** Se agregó el módulo **Ajustes de Stock por Lote** (secciones 2.19, 2.20, 3.14, 3.15, 5.10b, 6.3). Nuevas tablas: `inventory_adjustment_batches` e `inventory_adjustment_lines`.  
+> **Cambios en 2026-05-27:** Resueltos todos los gaps (sección 11). Nuevos endpoints: `GET /api/dashboard` y `GET /api/orders/{order}/handlers`. Autorización granular activada en todos los FormRequests.
 
 ---
 
@@ -1173,6 +1174,63 @@ Incluye: lines (detalle completo), creator
 
 ---
 
+### 5.9b Dashboard (`/api/dashboard`)
+
+#### `GET /api/dashboard`
+```
+Controlador: DashboardController (invokable)
+Auth requerida: sí (auth:sanctum)
+Sin paginación — respuesta única con todos los KPIs
+
+Response 200:
+{
+  "orders": {
+    "total":          int,
+    "this_month":     int,
+    "last_month":     int,
+    "active":         int,          // pending|confirmed|in_production|ready|shipped
+    "by_status": {
+      "pending":       int,
+      "confirmed":     int,
+      "in_production": int,
+      "ready":         int,
+      "shipped":       int,
+      "delivered":     int,
+      "cancelled":     int,
+      "returned":      int
+    }
+  },
+  "revenue": {
+    "this_month":          float,   // pagos completed desde inicio de mes
+    "last_month":          float,
+    "growth_percent":      float|null,
+    "pending_collection":  float    // pagos en estado pending
+  },
+  "customers": {
+    "total":          int,
+    "active":         int,
+    "new_this_month": int,
+    "businesses":     int,
+    "individuals":    int
+  },
+  "inventory": {
+    "low_stock_count":     int,     // (qty_available - qty_reserved) <= reorder_point
+    "out_of_stock_count":  int,     // qty_available <= 0
+    "units_in_production": int      // suma qty_in_production
+  },
+  "recent_orders": [
+    { "id", "total_amount", "status", "created_at", "customer_name" }
+    // últimas 8 órdenes
+  ],
+  "top_customers": [
+    { "id", "name", "customer_type", "orders_count", "total_spent" }
+    // top 5 por total_spent en órdenes delivered
+  ]
+}
+```
+
+---
+
 ### 5.10 Órdenes (`/api/orders`)
 
 #### `GET /api/orders`
@@ -1253,6 +1311,27 @@ Response 422 si stock insuficiente: {
   "requested": int,
   "available": int,
   "product": string
+}
+```
+
+#### `GET /api/orders/{order}/handlers`
+```
+Devuelve el historial de gestión (auditoría) de la orden, ordenado cronológicamente.
+
+Response 200:
+{
+  "order_id": "uuid",
+  "data": [
+    {
+      "id":           "uuid",
+      "user_id":      "uuid",
+      "handler_name": "string",
+      "handler_role": "string",
+      "action_taken": "string",
+      "notes":        "string|null",
+      "handled_at":   "timestamp"
+    }
+  ]
 }
 ```
 
@@ -1640,49 +1719,50 @@ Rol:      super-admin
 
 ## 11. Gaps y Pendientes
 
-### 11.1 Permiso `modulo-clientes` no seedeado
+> **Estado al 2026-05-27: todos los gaps resueltos.**
 
-El módulo de clientes está completamente implementado en backend y frontend, pero el permiso **no está en `RoleAndPermissionSeeder`**.
+### 11.1 ✅ Permiso `modulo-clientes` no seedeado — RESUELTO
 
-**Acción requerida:** Agregar al seeder y ejecutar, O insertar manualmente:
+`RoleAndPermissionSeeder` actualizado con `modulo-clientes` y `modulo-inventario`. Roles `vendedor` y `cliente` agregados. El rol `super-admin` recibe automáticamente todos los permisos.
 
-```sql
--- Insertar permiso
-INSERT INTO permissions (id, name, slug, module, is_active, created_at, updated_at)
-VALUES (UUID(), 'Acceso al Módulo Clientes', 'modulo-clientes', 'Operaciones', 1, NOW(), NOW());
+### 11.2 ✅ Sin autorización granular en FormRequests — RESUELTO
 
--- Asignar al rol super-admin (ajustar UUID del rol)
-INSERT INTO role_permission (role_id, permission_id, created_at)
-SELECT r.id, p.id, NOW()
-FROM roles r, permissions p
-WHERE r.slug = 'super-admin' AND p.slug = 'modulo-clientes';
-```
+Todos los FormRequests ahora implementan `authorize()` con `$this->user()?->hasPermission('modulo-X') ?? false`. Módulos cubiertos:
 
-O agregar al `RoleAndPermissionSeeder`:
-```php
-['name' => 'Acceso al Módulo Clientes', 'slug' => 'modulo-clientes', 'module' => 'Operaciones'],
-```
+| FormRequest | Permiso requerido |
+|---|---|
+| `StoreCustomerRequest` / `UpdateCustomerRequest` | `modulo-clientes` |
+| `StoreUserRequest` / `UpdateUserRequest` | `modulo-usuarios` |
+| `StoreOrderRequest` / `UpdateOrderStatusRequest` | `modulo-pedidos` |
+| `StoreInventoryAdjustmentRequest` | `modulo-inventario` |
+| `StorePaymentRequest` | `modulo-pedidos` |
+| `StoreProductionOrderRequest` / `AssignWorkerRequest` / `UpdateProductionOrderRequest` | `modulo-pedidos` |
+| `StoreReturnRequest` / `UpdateReturnStatusRequest` | `modulo-pedidos` |
+| `StoreShipmentRequest` / `UpdateShipmentRequest` | `modulo-pedidos` |
+| `StoreProductRequest` / `UpdateProductRequest` | `modulo-productos` |
 
-### 11.2 Sin autorización granular en controladores
+### 11.3 ✅ `order_handlers` sin endpoint dedicado — RESUELTO
 
-Actualmente `authorize(): bool { return true; }` en todos los FormRequests. No hay validación de permisos a nivel de controlador/request — solo a nivel de ruta frontend. Para producción, agregar `$this->user()->hasPermission(...)` en el método `authorize()`.
+Nuevo endpoint: `GET /api/orders/{order}/handlers` — devuelve el historial de gestión ordenado cronológicamente (ver sección 5, Módulo Órdenes).
 
-### 11.3 `order_handlers` sin modelo expuesto en API
+### 11.4 ✅ `UserController` crea Customer asociado — RESUELTO (documentado)
 
-La tabla `order_handlers` existe y se llena automáticamente, pero no hay endpoint `GET /api/orders/{order}/handlers` documentado explícitamente. La data sí se incluye en `GET /api/orders/{order}/show` via relación `handlers`.
+Al crear un usuario con `customer_type` presente, `UserController` crea también un registro `Customer` vinculado via `user_id`. Esto permite que un empleado sea a la vez cliente del sistema. El frontend filtra `!user.customer` para mostrar solo personal interno en `UsuariosView`. Comportamiento documentado con comentario en el controlador.
 
-### 11.4 `UserController` crea Customer asociado
+### 11.5 ✅ Falta endpoint de resumen/dashboard — RESUELTO
 
-Al crear un usuario con `customer_type` no nulo, se crea también un perfil `Customer` vinculado. Esta lógica hace que `UsuariosView` filtre los usuarios que tienen `customer` (los oculta del listado de staff). Documentar este comportamiento para evitar confusión.
+`GET /api/dashboard` implementado en `DashboardController` (invokable). Devuelve en una sola llamada:
+- `orders`: total, este mes, mes anterior, activos, desglose por estado
+- `revenue`: este mes, mes anterior, crecimiento %, pendiente de cobro
+- `customers`: total, activos, nuevos este mes, empresas, individuos
+- `inventory`: productos con stock bajo, sin stock, unidades en producción
+- `recent_orders`: últimas 8 órdenes con nombre de cliente
+- `top_customers`: top 5 clientes por facturación acumulada (órdenes `delivered`)
 
-### 11.5 Falta endpoint de resumen/dashboard
+### 11.6 ✅ Sin validación de producto activo al confirmar orden — RESUELTO
 
-No existe un endpoint `GET /api/dashboard` con KPIs agregados (ventas del mes, órdenes activas, stock bajo, etc.). Es necesario para el módulo Dashboard del frontend.
-
-### 11.6 Sin validación de producto activo al confirmar orden
-
-El `OrderService::reserveStock()` no verifica si el producto sigue activo al momento de confirmar (solo se valida al crear). Si un producto se desactiva entre la creación y la confirmación, el stock se reserva igual.
+`OrderService::reserveStock()` ahora carga todos los productos en una sola query y verifica `is_active` antes de reservar stock. Si el producto fue desactivado entre la creación y confirmación, lanza `InvalidArgumentException` con mensaje descriptivo. Esto también elimina el N+1 que existía antes.
 
 ---
 
-*Documento generado automáticamente desde el código fuente. Actualizar ante cambios en modelos, migraciones o controladores.*
+*Documento de referencia técnica. Actualizar ante cambios en modelos, migraciones o controladores.*
