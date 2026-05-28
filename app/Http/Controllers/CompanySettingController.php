@@ -38,10 +38,20 @@ class CompanySettingController extends Controller
             'about_description' => 'nullable|string',
             'about_image'       => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
             'footer_text'       => 'nullable|string|max:255',
+            // Logos del sistema (file en lugar de image para admitir SVG)
+            'logo_login'           => 'nullable|file|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
+            'logo_sidebar'         => 'nullable|file|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
+            'logo_sidebar_compact' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
+            'logo_landing'         => 'nullable|file|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
             // Flags para eliminar imágenes del slider
-            'remove_hero_image'   => 'nullable|boolean',
-            'remove_hero_image_2' => 'nullable|boolean',
-            'remove_hero_image_3' => 'nullable|boolean',
+            'remove_hero_image'          => 'nullable|boolean',
+            'remove_hero_image_2'        => 'nullable|boolean',
+            'remove_hero_image_3'        => 'nullable|boolean',
+            // Flags para eliminar logos
+            'remove_logo_login'          => 'nullable|boolean',
+            'remove_logo_sidebar'        => 'nullable|boolean',
+            'remove_logo_sidebar_compact'=> 'nullable|boolean',
+            'remove_logo_landing'        => 'nullable|boolean',
         ]);
 
         $settings = CompanySetting::firstOrNew([]);
@@ -60,11 +70,17 @@ class CompanySettingController extends Controller
             }
         }
 
-        // Procesamiento de imágenes (subida o eliminación)
+        // Procesamiento de imágenes hero/nosotros
         $this->handleImage($request, $settings, 'hero_image',   'hero_image_path',   'remove_hero_image');
         $this->handleImage($request, $settings, 'hero_image_2', 'hero_image_2_path', 'remove_hero_image_2');
         $this->handleImage($request, $settings, 'hero_image_3', 'hero_image_3_path', 'remove_hero_image_3');
         $this->handleImage($request, $settings, 'about_image',  'about_image_path',  null);
+
+        // Logos del sistema
+        $this->handleImage($request, $settings, 'logo_login',           'logo_login_path',           'remove_logo_login');
+        $this->handleImage($request, $settings, 'logo_sidebar',         'logo_sidebar_path',         'remove_logo_sidebar');
+        $this->handleImage($request, $settings, 'logo_sidebar_compact', 'logo_sidebar_compact_path', 'remove_logo_sidebar_compact');
+        $this->handleImage($request, $settings, 'logo_landing',         'logo_landing_path',         'remove_logo_landing');
 
         $settings->save();
 
