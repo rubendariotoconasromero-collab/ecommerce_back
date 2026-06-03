@@ -133,6 +133,31 @@ class CustomerController extends Controller
     }
 
     /**
+     * GET /public/customers/lookup?tax_id=xxx
+     * Búsqueda pública por NIT/CI — sin autenticación.
+     */
+    public function lookup(Request $request)
+    {
+        $request->validate(['tax_id' => 'required|string|max:30']);
+
+        $customer = Customer::where('tax_id', $request->tax_id)
+                            ->where('is_active', true)
+                            ->first();
+
+        if (!$customer) {
+            return response()->json(['found' => false], 404);
+        }
+
+        return response()->json([
+            'found'  => true,
+            'name'   => $customer->business_name ?: $customer->name,
+            'tax_id' => $customer->tax_id,
+            'phone'  => $customer->phone,
+            'email'  => $customer->email,
+        ]);
+    }
+
+    /**
      * PATCH /api/customers/{customer}/restore
      * Reactiva un cliente desactivado.
      */

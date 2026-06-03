@@ -128,9 +128,11 @@ class OrderController extends Controller
         $order->load([
             'customer:id,name,email,customer_type,business_name,phone',
             'user:id,name',
-            'items',
+            'items.product.inventory',
+            'items.productionOrders:id,order_item_id,status',
             'payments',
             'shipments',
+            'returns.orderItem:id,product_name',
             'handlers',
         ]);
 

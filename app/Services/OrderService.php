@@ -16,10 +16,10 @@ class OrderService
 {
     /**
      * Mapa de transiciones de estado permitidas.
-     * Clave: estado actual → Valor: estados a los que puede pasar.
+     * pending → in_production habilita el flujo make-to-order (sin reserva de stock).
      */
     private const TRANSITIONS = [
-        'pending'       => ['confirmed', 'cancelled'],
+        'pending'       => ['confirmed', 'in_production', 'cancelled'],
         'confirmed'     => ['in_production', 'cancelled'],
         'in_production' => ['ready', 'cancelled'],
         'ready'         => ['shipped', 'cancelled'],
@@ -27,14 +27,6 @@ class OrderService
         'delivered'     => ['returned'],
         'cancelled'     => [],
         'returned'      => [],
-    ];
-
-    /**
-     * Estados en los que el stock ya fue reservado.
-     * Al cancelar desde uno de estos, hay que liberarlo.
-     */
-    private const STATUSES_WITH_RESERVED_STOCK = [
-        'confirmed', 'in_production', 'ready', 'shipped',
     ];
 
     public function __construct(private readonly InventoryService $inventoryService) {}
@@ -193,7 +185,6 @@ class OrderService
     {
         $order->loadMissing('items');
 
-        // Carga los productos de una sola vez para evitar N+1 y validar estado activo
         $productIds = $order->items->pluck('product_id')->unique();
         $products   = Product::whereIn('id', $productIds)->get()->keyBy('id');
 
@@ -212,11 +203,16 @@ class OrderService
                 $item->product_name
             );
         }
+
+        // Marcar que este pedido tiene stock reservado para liberar correctamente al cancelar.
+        $order->update(['stock_reserved' => true]);
     }
 
     private function releaseStockIfNeeded(Order $order): void
     {
-        if (!in_array($order->status, self::STATUSES_WITH_RESERVED_STOCK)) {
+        // Solo liberar si el stock fue efectivamente reservado (flujo make-to-stock).
+        // Los pedidos make-to-order (pending → in_production) nunca reservan stock.
+        if (!$order->stock_reserved) {
             return;
         }
 
@@ -225,6 +221,8 @@ class OrderService
         foreach ($order->items as $item) {
             $this->inventoryService->release($item->product_id, $item->quantity);
         }
+
+        $order->update(['stock_reserved' => false]);
     }
 
     // =========================================================================

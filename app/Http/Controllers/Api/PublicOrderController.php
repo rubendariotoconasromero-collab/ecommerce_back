@@ -67,6 +67,30 @@ class PublicOrderController extends Controller
         ], 201);
     }
 
+    /**
+     * Infiere si el cliente es empresa o individual.
+     * NIT boliviano (≥ 9 dígitos) o nombre con sufijo empresarial → business.
+     */
+    private function detectCustomerType(string $name, string $taxId): string
+    {
+        $businessSuffixes = ['S.A.', 'SRL', 'S.R.L.', 'LTDA', 'S.A.S.', 'CIA.', 'E.I.R.L.', 'S.C.', 'COOP.'];
+        $upperName = strtoupper($name);
+
+        foreach ($businessSuffixes as $suffix) {
+            if (str_contains($upperName, strtoupper($suffix))) {
+                return 'business';
+            }
+        }
+
+        // NIT boliviano tiene 10+ dígitos; CI tiene 7-8 dígitos
+        $digitsOnly = preg_replace('/\D/', '', $taxId);
+        if (strlen($digitsOnly) >= 9) {
+            return 'business';
+        }
+
+        return 'individual';
+    }
+
     private function findOrCreateCustomer(array $data): Customer
     {
         $phone = $data['phone'];
@@ -83,7 +107,7 @@ class PublicOrderController extends Controller
         }
 
         return Customer::create([
-            'customer_type' => 'individual',
+            'customer_type' => $this->detectCustomerType($data['name'], $data['tax_id']),
             'name'          => $data['name'],
             'email'         => $email,
             'phone'         => $phone,

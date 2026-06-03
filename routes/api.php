@@ -31,6 +31,7 @@ Route::get('/public/settings', [CompanySettingController::class, 'show']);
 Route::get('/public/products', [ProductController::class, 'index']);
 Route::get('/public/products/{product}', [ProductController::class, 'show']);
 Route::post('/public/orders', [PublicOrderController::class, 'store']);
+Route::get('/public/customers/lookup', [CustomerController::class, 'lookup']);
 
 /*
 |--------------------------------------------------------------------------

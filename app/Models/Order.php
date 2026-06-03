@@ -18,6 +18,7 @@ class Order extends Model
         'user_id',
         'total_amount',
         'status',
+        'stock_reserved',
         'expected_delivery_date',
         'shipping_address',
         'notes',
@@ -26,6 +27,7 @@ class Order extends Model
     protected $casts = [
         'total_amount'           => 'decimal:2',
         'expected_delivery_date' => 'date',
+        'stock_reserved'         => 'boolean',
     ];
 
     // -------------------------------------------------------------------------
@@ -99,7 +101,7 @@ class Order extends Model
     public function getAllowedTransitionsAttribute(): array
     {
         return match ($this->status) {
-            'pending'       => ['confirmed', 'cancelled'],
+            'pending'       => ['confirmed', 'in_production', 'cancelled'],
             'confirmed'     => ['in_production', 'cancelled'],
             'in_production' => ['ready', 'cancelled'],
             'ready'         => ['shipped', 'cancelled'],

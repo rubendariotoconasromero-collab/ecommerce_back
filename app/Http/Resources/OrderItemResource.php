@@ -33,6 +33,27 @@ class OrderItemResource extends JsonResource
                 'is_active'  => $this->product->is_active,
                 'sale_price' => (float) $this->product->sale_price,
             ]),
+
+            // Stock en tiempo real (solo en show, cuando se carga product.inventory)
+            'stock' => $this->whenLoaded('product', fn () =>
+                $this->product?->inventory
+                    ? [
+                        'available'     => (int) $this->product->inventory->qty_available,
+                        'reserved'      => (int) $this->product->inventory->qty_reserved,
+                        'in_production' => (int) $this->product->inventory->qty_in_production,
+                    ]
+                    : null
+            ),
+
+            // Estado de producción del ítem (none | queued | in_progress | completed)
+            // Solo en show, cuando se carga productionOrders.
+            'production_status' => $this->whenLoaded('productionOrders', function () {
+                $orders = $this->productionOrders;
+                $active = $orders->whereIn('status', ['queued', 'in_progress'])->first();
+                if ($active) return $active->status;
+                if ($orders->where('status', 'completed')->isNotEmpty()) return 'completed';
+                return 'none';
+            }),
         ];
     }
 }

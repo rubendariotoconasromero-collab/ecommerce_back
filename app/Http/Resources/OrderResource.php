@@ -69,18 +69,32 @@ class OrderResource extends JsonResource
                 ])
             ),
 
-            // Último envío activo (solo en show)
-            'shipment' => $this->whenLoaded('shipments', fn () =>
-                $this->shipments->sortByDesc('created_at')->first()
-                    ? [
-                        'id'             => $this->shipments->first()->id,
-                        'status'         => $this->shipments->sortByDesc('created_at')->first()->status,
-                        'tracking_number'=> $this->shipments->sortByDesc('created_at')->first()->tracking_number,
-                        'courier_name'   => $this->shipments->sortByDesc('created_at')->first()->courier_name,
-                        'shipped_at'     => $this->shipments->sortByDesc('created_at')->first()->shipped_at,
-                        'delivered_at'   => $this->shipments->sortByDesc('created_at')->first()->delivered_at,
-                    ]
-                    : null
+            // Historial completo de envíos (solo en show)
+            'shipments' => $this->whenLoaded('shipments', fn () =>
+                $this->shipments->sortByDesc('created_at')->map(fn ($s) => [
+                    'id'             => $s->id,
+                    'status'         => $s->status,
+                    'tracking_number'=> $s->tracking_number,
+                    'courier_name'   => $s->courier_name,
+                    'failure_reason' => $s->failure_reason,
+                    'notes'          => $s->notes,
+                    'shipped_at'     => $s->shipped_at,
+                    'delivered_at'   => $s->delivered_at,
+                    'created_at'     => $s->created_at,
+                ])->values()
+            ),
+
+            // Devoluciones del pedido (solo en show)
+            'returns' => $this->whenLoaded('returns', fn () =>
+                $this->returns->sortByDesc('request_at')->map(fn ($r) => [
+                    'id'            => $r->id,
+                    'return_type'   => $r->return_type,
+                    'status'        => $r->status,
+                    'reason'        => $r->reason,
+                    'refund_amount' => $r->refund_amount ? (float) $r->refund_amount : null,
+                    'product_name'  => $r->orderItem?->product_name,
+                    'request_at'    => $r->request_at,
+                ])->values()
             ),
 
             // Historial de gestión (solo en show)

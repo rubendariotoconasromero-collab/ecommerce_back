@@ -14,8 +14,9 @@ class ProductionService
 {
     /**
      * Estados de la orden que permiten crear órdenes de producción.
+     * 'pending' habilita el flujo make-to-order: producción antes de confirmar stock.
      */
-    private const ALLOWED_ORDER_STATUSES = ['confirmed', 'in_production'];
+    private const ALLOWED_ORDER_STATUSES = ['pending', 'confirmed', 'in_production'];
 
     public function __construct(
         private readonly InventoryService $inventoryService,
@@ -54,8 +55,10 @@ class ProductionService
                 'internal_notes'    => $data['internal_notes'] ?? null,
             ]);
 
-            // Si la orden sigue en 'confirmed', transicionarla a 'in_production'
-            if ($order->status === 'confirmed') {
+            // Transicionar a 'in_production' si la orden aún no lo está.
+            // Desde 'pending': flujo make-to-order (sin reserva de stock).
+            // Desde 'confirmed': flujo make-to-stock (stock ya reservado).
+            if (in_array($order->status, ['pending', 'confirmed'])) {
                 $this->orderService->transition(
                     $order,
                     'in_production',
@@ -107,7 +110,7 @@ class ProductionService
                 );
             }
 
-            if ($order->status === 'confirmed') {
+            if (in_array($order->status, ['pending', 'confirmed'])) {
                 $this->orderService->transition(
                     $order,
                     'in_production',
@@ -135,7 +138,7 @@ class ProductionService
             $prodOrder = ProductionOrder::lockForUpdate()->findOrFail($prodOrder->id);
             $this->assertCanTransition($prodOrder, 'in_progress');
 
-            $item = $prodOrder->orderItem()->with('product:id,product_id')->first();
+            $item = $prodOrder->orderItem()->first();
 
             $this->inventoryService->moveToProduction(
                 $item->product_id,
