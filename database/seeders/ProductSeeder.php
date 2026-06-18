@@ -11,7 +11,6 @@ use Illuminate\Support\Str;
 
 class ProductSeeder extends Seeder
 {
-    // Colores por categoría para los SVGs de productos
     private array $categoryColors = [
         'Envases Industriales' => ['bg' => '#1a5276', 'accent' => '#2e86c1'],
         'Menaje y Hogar'       => ['bg' => '#1e8449', 'accent' => '#28b463'],
@@ -23,24 +22,72 @@ class ProductSeeder extends Seeder
     {
         $productsByCategory = [
             'Envases Industriales' => [
-                ['name' => 'Bidón Apilable 20L',    'price' => 125.00],
-                ['name' => 'Tambor 200L Soplado',   'price' => 850.00],
-                ['name' => 'Contenedor IBC 1000L',  'price' => 4500.00],
+                [
+                    'name'     => 'Bidón Apilable 20L',
+                    'price'    => 125.00,
+                    'keywords' => 'plastic barrel container blue industrial storage',
+                ],
+                [
+                    'name'     => 'Tambor 200L Soplado',
+                    'price'    => 850.00,
+                    'keywords' => 'industrial drum barrel chemical plastic storage',
+                ],
+                [
+                    'name'     => 'Contenedor IBC 1000L',
+                    'price'    => 4500.00,
+                    'keywords' => 'industrial bulk container tank chemical warehouse',
+                ],
             ],
             'Menaje y Hogar' => [
-                ['name' => 'Set Herméticos x3',          'price' => 32.00],
-                ['name' => 'Cesto de Residuos 50L',      'price' => 48.00],
-                ['name' => 'Organizador Apilable Grande', 'price' => 15.00],
+                [
+                    'name'     => 'Set Herméticos x3',
+                    'price'    => 32.00,
+                    'keywords' => 'food storage containers kitchen plastic hermetic',
+                ],
+                [
+                    'name'     => 'Cesto de Residuos 50L',
+                    'price'    => 48.00,
+                    'keywords' => 'trash bin waste basket recycling plastic home',
+                ],
+                [
+                    'name'     => 'Organizador Apilable Grande',
+                    'price'    => 15.00,
+                    'keywords' => 'plastic storage box organizer stackable home',
+                ],
             ],
             'Embalajes Flexibles' => [
-                ['name' => 'Film Stretch 50cm x 5kg', 'price' => 75.00],
-                ['name' => 'Rollo Burbuja 1m x 50m', 'price' => 120.00],
+                [
+                    'name'     => 'Film Stretch 50cm x 5kg',
+                    'price'    => 75.00,
+                    'keywords' => 'stretch wrap film plastic pallet packaging industrial',
+                ],
+                [
+                    'name'     => 'Rollo Burbuja 1m x 50m',
+                    'price'    => 120.00,
+                    'keywords' => 'bubble wrap packaging plastic protection roll',
+                ],
             ],
             'Botellas y Tapas' => [
-                ['name' => 'Botella PET 500ml Cristal', 'price' => 2.50],
-                ['name' => 'Botella PET 2L Económica',  'price' => 5.80],
-                ['name' => 'Tapa de Seguridad 28mm',    'price' => 0.50],
-                ['name' => 'Botella HDPE 1L Blanca',    'price' => 8.20],
+                [
+                    'name'     => 'Botella PET 500ml Cristal',
+                    'price'    => 2.50,
+                    'keywords' => 'clear plastic bottle pet 500ml transparent water',
+                ],
+                [
+                    'name'     => 'Botella PET 2L Económica',
+                    'price'    => 5.80,
+                    'keywords' => 'plastic bottle 2 liter water beverage pet',
+                ],
+                [
+                    'name'     => 'Tapa de Seguridad 28mm',
+                    'price'    => 0.50,
+                    'keywords' => 'bottle cap closure plastic security lid',
+                ],
+                [
+                    'name'     => 'Botella HDPE 1L Blanca',
+                    'price'    => 8.20,
+                    'keywords' => 'white plastic bottle hdpe 1 liter chemical',
+                ],
             ],
         ];
 
@@ -52,7 +99,7 @@ class ProductSeeder extends Seeder
             $category = Category::where('name', $categoryName)->first();
 
             if (!$category) {
-                $this->command->warn("ProductSeeder: Categoría '{$categoryName}' no encontrada. Ejecuta CategorySeeder primero.");
+                $this->command->warn("ProductSeeder: Categoría '{$categoryName}' no encontrada.");
                 continue;
             }
 
@@ -78,82 +125,109 @@ class ProductSeeder extends Seeder
                     ]
                 );
 
-                // Generar SVG y actualizar/crear la imagen primaria
                 $slug      = Str::slug($prod['name']);
-                $imagePath = $this->generateSvg($prod['name'], $categoryName, $slug, $colors['bg'], $colors['accent']);
+                $imagePath = $this->resolveImage(
+                    $prod['keywords'],
+                    'products/' . $slug,
+                    $prod['name'],
+                    $categoryName,
+                    $colors['bg'],
+                    $colors['accent']
+                );
 
                 ProductImage::updateOrCreate(
                     ['product_id' => $product->id, 'is_primary' => true],
                     ['image_path' => $imagePath, 'sort_order' => 0]
                 );
 
+                $this->command->line("  ✓ {$prod['name']} → {$imagePath}");
                 $total++;
             }
         }
 
-        $this->command->info("ProductSeeder: {$total} productos con imagen sembrados.");
+        $this->command->info("ProductSeeder: {$total} productos sembrados.");
     }
 
-    private function generateSvg(string $name, string $category, string $slug, string $bg, string $accent): string
+    // -------------------------------------------------------------------------
+
+    private function resolveImage(
+        string $keywords,
+        string $baseStoragePath,
+        string $name,
+        string $category,
+        string $bg,
+        string $accent
+    ): string {
+        $slug    = basename($baseStoragePath);
+        $jpgPath = $baseStoragePath . '.jpg';
+
+        if (Storage::disk('public')->exists($jpgPath)) {
+            return $jpgPath;
+        }
+
+        $content = $this->downloadFromPicsum($slug, 600, 600);
+
+        if ($content) {
+            Storage::disk('public')->put($jpgPath, $content);
+            return $jpgPath;
+        }
+
+        return $this->generateSvg($name, $slug, $bg, $accent);
+    }
+
+    private function downloadFromPicsum(string $seed, int $width, int $height): string|false
     {
-        // Dividir el nombre en máximo 2 líneas
-        $words = explode(' ', $name);
-        $mid   = (int) ceil(count($words) / 2);
-        $line1 = implode(' ', array_slice($words, 0, $mid));
-        $line2 = implode(' ', array_slice($words, $mid));
+        $url = "https://picsum.photos/seed/{$seed}/{$width}/{$height}";
 
-        $l1    = htmlspecialchars($line1, ENT_XML1 | ENT_QUOTES);
-        $l2    = htmlspecialchars($line2, ENT_XML1 | ENT_QUOTES);
-        $cat   = htmlspecialchars(strtoupper($category), ENT_XML1 | ENT_QUOTES);
+        $context = stream_context_create([
+            'http' => [
+                'timeout'         => 20,
+                'follow_location' => 1,
+                'max_redirects'   => 5,
+                'user_agent'      => 'Mozilla/5.0 (compatible; SOLUPLAST-Seeder/1.0)',
+            ],
+            'ssl' => [
+                'verify_peer'      => false,
+                'verify_peer_name' => false,
+            ],
+        ]);
 
-        $hasLine2 = $line2 !== '';
-        $y1       = $hasLine2 ? '185' : '205';
+        $content = @file_get_contents($url, false, $context);
 
-        $line2Svg = $hasLine2
-            ? '<text x="300" y="230" text-anchor="middle" dominant-baseline="middle" '
-              . 'fill="white" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">'
-              . $l2 . '</text>'
+        if ($content === false || strlen($content) < 10_000) {
+            return false;
+        }
+
+        return $content;
+    }
+
+    private function generateSvg(string $name, string $slug, string $bg, string $accent): string
+    {
+        $words  = explode(' ', $name);
+        $mid    = (int) ceil(count($words) / 2);
+        $line1  = htmlspecialchars(implode(' ', array_slice($words, 0, $mid)), ENT_XML1 | ENT_QUOTES);
+        $line2  = htmlspecialchars(implode(' ', array_slice($words, $mid)), ENT_XML1 | ENT_QUOTES);
+
+        $y1       = $line2 ? '190' : '210';
+        $line2Svg = $line2
+            ? '<text x="300" y="240" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="Arial" font-size="30" font-weight="700">' . $line2 . '</text>'
             : '';
 
         $svg = implode('', [
             '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">',
-
-            // Fondo
             '<rect width="600" height="600" fill="', $bg, '"/>',
-
-            // Patrón de líneas cruzadas
-            '<defs>',
-            '<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">',
-            '<path d="M0 0 L40 40 M40 0 L0 40" stroke="white" stroke-width="0.4" opacity="0.1"/>',
-            '</pattern>',
-            '</defs>',
-            '<rect width="600" height="600" fill="url(#grid)"/>',
-
-            // Marco interior sutil
-            '<rect x="25" y="25" width="550" height="550" rx="6" fill="none" stroke="white" stroke-width="1" opacity="0.12"/>',
-
-            // Franja de acento superior
-            '<rect x="0" y="0" width="600" height="8" fill="', $accent, '"/>',
-
-            // Nombre del producto — línea 1
-            '<text x="300" y="', $y1, '" text-anchor="middle" dominant-baseline="middle" ',
-            'fill="white" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">',
-            $l1, '</text>',
-
-            // Nombre del producto — línea 2 (si existe)
+            '<defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse">',
+            '<path d="M0 0 L40 40 M40 0 L0 40" stroke="white" stroke-width="0.4" opacity="0.1"/></pattern></defs>',
+            '<rect width="600" height="600" fill="url(#g)"/>',
+            '<rect x="0" y="0" width="600" height="6" fill="', $accent, '"/>',
+            '<text x="300" y="', $y1, '" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="Arial" font-size="30" font-weight="700">', $line1, '</text>',
             $line2Svg,
-
-            // Categoría en la parte inferior
-            '<text x="300" y="555" text-anchor="middle" dominant-baseline="middle" ',
-            'fill="rgba(255,255,255,0.45)" font-family="Arial, Helvetica, sans-serif" ',
-            'font-size="11" letter-spacing="3">', $cat, '</text>',
-
+            '<text x="300" y="560" text-anchor="middle" dominant-baseline="middle" fill="rgba(255,255,255,0.4)" font-family="Arial" font-size="11" letter-spacing="4">SOLUPLAST</text>',
             '</svg>',
         ]);
 
         $path = 'products/' . $slug . '.svg';
         Storage::disk('public')->put($path, $svg);
-
         return $path;
     }
 }
