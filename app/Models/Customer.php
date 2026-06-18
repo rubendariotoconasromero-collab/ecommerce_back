@@ -38,4 +38,28 @@ class Customer extends Model
     {
         return $this->hasMany(Order::class, 'customer_id');
     }
+
+    /**
+     * Infiere si un cliente es 'business' o 'individual' a partir de su nombre y NIT.
+     * Lógica: sufijos empresariales en el nombre O NIT con ≥9 dígitos → business.
+     * NIT boliviano tiene 10+ dígitos; CI tiene 7-8 dígitos.
+     */
+    public static function inferType(string $name, string $taxId): string
+    {
+        $businessSuffixes = ['S.A.', 'SRL', 'S.R.L.', 'LTDA', 'S.A.S.', 'CIA.', 'E.I.R.L.', 'S.C.', 'COOP.'];
+        $upperName = strtoupper($name);
+
+        foreach ($businessSuffixes as $suffix) {
+            if (str_contains($upperName, strtoupper($suffix))) {
+                return 'business';
+            }
+        }
+
+        $digitsOnly = preg_replace('/\D/', '', $taxId);
+        if (strlen($digitsOnly) >= 9) {
+            return 'business';
+        }
+
+        return 'individual';
+    }
 }

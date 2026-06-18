@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
+use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use Illuminate\Http\Request;
 
@@ -36,12 +37,12 @@ class ProductController extends Controller
 
         $query->orderBy('created_at', 'desc');
 
-        // Sin paginación: solo para catálogos públicos compactos, con límite máximo
         if ($request->boolean('nopaginate')) {
-            return response()->json($query->limit(100)->get());
+            // Limitado a 100 y solo disponible en rutas autenticadas (admin)
+            return ProductResource::collection($query->limit(100)->get());
         }
 
-        return response()->json($query->paginate(15));
+        return ProductResource::collection($query->paginate(15));
     }
 
     public function store(StoreProductRequest $request)
@@ -50,13 +51,13 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Producto registrado exitosamente',
-            'product' => $product->load(['category', 'images']),
+            'product' => new ProductResource($product->load(['category', 'images'])),
         ], 201);
     }
 
     public function show(Product $product)
     {
-        return response()->json($product->load(['category', 'images', 'inventory']));
+        return new ProductResource($product->load(['category', 'images', 'inventory']));
     }
 
     public function update(UpdateProductRequest $request, Product $product)
@@ -65,7 +66,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Producto actualizado exitosamente',
-            'product' => $product->load(['category', 'images']),
+            'product' => new ProductResource($product->load(['category', 'images'])),
         ]);
     }
 

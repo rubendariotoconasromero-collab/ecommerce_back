@@ -1,6 +1,6 @@
 # BACKEND MASTER — Ecommerce Codesoft (SOLUPLAST)
 
-> Documento de referencia técnica completo. Generado el 2026-05-24. Última actualización: 2026-05-27 (gaps resueltos; endpoints /dashboard y /orders/{order}/handlers).  
+> Documento de referencia técnica completo. Generado el 2026-05-24. Última actualización: 2026-06-18 (correcciones de seguridad y diseño: ProductResource, order_number, índices, race condition, rate limiting).  
 > Stack: **Laravel 12** · **MySQL** · **Laravel Sanctum** · **UUID** primary keys en todas las entidades de negocio.
 
 ---
@@ -20,7 +20,9 @@
 11. [Gaps y Pendientes](#11-gaps-y-pendientes)
 
 > **Cambios en 2026-05-25:** Se agregó el módulo **Ajustes de Stock por Lote** (secciones 2.19, 2.20, 3.14, 3.15, 5.10b, 6.3). Nuevas tablas: `inventory_adjustment_batches` e `inventory_adjustment_lines`.  
-> **Cambios en 2026-05-27:** Resueltos todos los gaps (sección 11). Nuevos endpoints: `GET /api/dashboard` y `GET /api/orders/{order}/handlers`. Autorización granular activada en todos los FormRequests.
+> **Cambios en 2026-05-27:** Resueltos todos los gaps (sección 11). Nuevos endpoints: `GET /api/dashboard` y `GET /api/orders/{order}/handlers`. Autorización granular activada en todos los FormRequests.  
+> **Cambios en 2026-06-18 (v1):** `company_settings` ampliado con hero slider ×3 (`hero_image_2_path`, `hero_image_3_path`) y 4 logos del sistema. Modelo `CompanySetting` documentado (sección 3.16). Endpoint `POST /api/settings` actualizado.  
+> **Cambios en 2026-06-18 (v2):** Correcciones de seguridad y diseño: `ProductResource` creado (oculta `cost_price`/`base_price` a no autenticados); `order_number` (PED-YYYY-NNNNN) agregado a `orders`; índices en `orders.status`, `orders.created_at`, `customers.phone`, `inventory_adjustment_batches.confirmed_at`; `order_items.quantity` cambiado a `unsignedInteger`; race condition en `findOrCreateCustomer` corregida con `lockForUpdate`; `Customer::inferType()` extraído del controller; rate limiting en rutas públicas (120/min lectura, 20/min escritura).
 
 ---
 
@@ -199,27 +201,47 @@ PK compuesta: `(role_id, permission_id)`
 
 ### 2.8 Tabla: `company_settings`
 
-| Columna            | Tipo     | Descripción                         |
-|--------------------|----------|-------------------------------------|
-| id                 | bigint   | PK auto-increment (no UUID)         |
-| company_name       | varchar  | nullable                            |
-| email              | varchar  | nullable                            |
-| phone              | varchar  | nullable                            |
-| address            | text     | nullable                            |
-| facebook_url       | varchar  | nullable                            |
-| instagram_url      | varchar  | nullable                            |
-| whatsapp           | varchar  | nullable (número sin formato)       |
-| hero_title         | varchar  | nullable (landing page)             |
-| hero_subtitle      | varchar  | nullable (landing page)             |
-| hero_image_path    | varchar  | nullable                            |
-| about_title        | varchar  | nullable (sección nosotros)         |
-| about_description  | text     | nullable                            |
-| about_image_path   | varchar  | nullable                            |
-| footer_text        | varchar  | nullable                            |
-| created_at         | timestamp|                                     |
-| updated_at         | timestamp|                                     |
+| Columna                    | Tipo      | Descripción                                      |
+|----------------------------|-----------|--------------------------------------------------|
+| id                         | bigint    | PK auto-increment (no UUID)                      |
+| company_name               | varchar   | nullable                                         |
+| email                      | varchar   | nullable                                         |
+| phone                      | varchar   | nullable                                         |
+| address                    | text      | nullable                                         |
+| facebook_url               | varchar   | nullable                                         |
+| instagram_url              | varchar   | nullable                                         |
+| whatsapp                   | varchar   | nullable (número sin formato)                    |
+| hero_title                 | varchar   | nullable (landing page)                          |
+| hero_subtitle              | varchar   | nullable (landing page)                          |
+| hero_image_path            | varchar   | nullable — imagen 1 del slider hero              |
+| hero_image_2_path          | varchar   | nullable — imagen 2 del slider hero *(+2026-06-18)* |
+| hero_image_3_path          | varchar   | nullable — imagen 3 del slider hero *(+2026-06-18)* |
+| about_title                | varchar   | nullable (sección nosotros)                      |
+| about_description          | text      | nullable                                         |
+| about_image_path           | varchar   | nullable                                         |
+| footer_text                | varchar   | nullable                                         |
+| logo_login_path            | varchar   | nullable — logo en pantalla de login *(+2026-06-18)* |
+| logo_sidebar_path          | varchar   | nullable — logo sidebar expandido *(+2026-06-18)* |
+| logo_sidebar_compact_path  | varchar   | nullable — logo sidebar compacto *(+2026-06-18)* |
+| logo_landing_path          | varchar   | nullable — logo en landing pública *(+2026-06-18)* |
+| created_at                 | timestamp |                                                  |
+| updated_at                 | timestamp |                                                  |
 
-> Siempre existe **un único registro** (id = 1). Se hace `updateOrCreate` en el seeder.
+> Siempre existe **un único registro** (id = 1). Se hace `updateOrCreate` en el seeder.  
+> Las columnas `hero_image_2_path`, `hero_image_3_path` y los 4 campos de logo fueron añadidas mediante migraciones posteriores a la creación inicial de la tabla.
+
+**Atributos calculados expuestos por el modelo (no en BD):**
+
+| Atributo appended         | Origen                    |
+|---------------------------|---------------------------|
+| `hero_image_url`          | `asset('storage/' . hero_image_path)` |
+| `hero_image_2_url`        | `asset('storage/' . hero_image_2_path)` |
+| `hero_image_3_url`        | `asset('storage/' . hero_image_3_path)` |
+| `about_image_url`         | `asset('storage/' . about_image_path)` |
+| `logo_login_url`          | `asset('storage/' . logo_login_path)` |
+| `logo_sidebar_url`        | `asset('storage/' . logo_sidebar_path)` |
+| `logo_sidebar_compact_url`| `asset('storage/' . logo_sidebar_compact_path)` |
+| `logo_landing_url`        | `asset('storage/' . logo_landing_path)` |
 
 ---
 
@@ -240,7 +262,10 @@ PK compuesta: `(role_id, permission_id)`
 | updated_at    | timestamp                  |                                         |
 
 > `user_id` vincula opcionalmente el perfil de cliente con una cuenta de acceso al sistema.  
-> `business_name` es **obligatorio** cuando `customer_type = 'business'` (validado en Request).
+> `business_name` es **obligatorio** cuando `customer_type = 'business'` (validado en Request).  
+> `customer_type` se infiere automáticamente con `Customer::inferType(name, taxId)` cuando viene de la tienda pública.
+
+**Índices adicionales:** `idx_customers_phone` (phone) — usado como llave de lookup en el flujo público.
 
 ---
 
@@ -271,30 +296,36 @@ PK compuesta: `(role_id, permission_id)`
 | Columna                | Tipo                                                                               | Restricciones                      |
 |------------------------|------------------------------------------------------------------------------------|------------------------------------|
 | id                     | UUID                                                                               | PK                                 |
+| order_number           | varchar(20)                                                                        | UNIQUE, nullable (PED-YYYY-NNNNN)  |
 | customer_id            | UUID                                                                               | FK → customers.id                  |
 | user_id                | UUID                                                                               | nullable, FK → users.id, SET NULL  |
 | total_amount           | decimal(12,2)                                                                      | NOT NULL (calculado en servidor)   |
 | status                 | ENUM('pending','confirmed','in_production','ready','shipped','delivered','cancelled','returned') | DEFAULT 'pending' |
+| stock_reserved         | boolean                                                                            | DEFAULT false                      |
 | expected_delivery_date | date                                                                               | nullable                           |
 | shipping_address       | text                                                                               | NOT NULL                           |
 | notes                  | text                                                                               | nullable                           |
 | created_at             | timestamp                                                                          |                                    |
 | updated_at             | timestamp                                                                          |                                    |
 
-> `user_id` registra qué empleado creó la orden.  
-> `total_amount` siempre se calcula en el servidor sumando `order_items.subtotal`.
+> `order_number` se genera en `OrderService::generateOrderNumber()` — formato `PED-YYYY-NNNNN`, correlativo por año. Nullable para compatibilidad con registros previos a la migración.  
+> `user_id` registra qué empleado creó la orden (null si vino de la tienda pública).  
+> `total_amount` siempre se calcula en el servidor sumando `order_items.subtotal`.  
+> `stock_reserved` indica si el stock fue efectivamente reservado (false en pedidos make-to-order que van pending → in_production directamente).
+
+**Índices adicionales:** `idx_orders_status` (status), `idx_orders_created_at` (created_at).
 
 ---
 
 ### 2.12 Tabla: `order_items`
 
-| Columna              | Tipo          | Restricciones                     |
-|----------------------|---------------|-----------------------------------|
-| id                   | UUID          | PK                                |
-| order_id             | UUID          | FK → orders.id, CASCADE DELETE    |
-| product_id           | UUID          | FK → products.id                  |
-| product_name         | varchar(200)  | Snapshot del nombre al momento    |
-| quantity             | integer       | NOT NULL                          |
+| Columna              | Tipo             | Restricciones                     |
+|----------------------|------------------|-----------------------------------|
+| id                   | UUID             | PK                                |
+| order_id             | UUID             | FK → orders.id, CASCADE DELETE    |
+| product_id           | UUID             | FK → products.id                  |
+| product_name         | varchar(200)     | Snapshot del nombre al momento    |
+| quantity             | unsignedInteger  | NOT NULL (no permite negativos)   |
 | unit_cost            | decimal(12,2) | Snapshot de cost_price            |
 | unit_price           | decimal(12,2) | Snapshot de sale_price            |
 | subtotal             | decimal(12,2) | unit_price × quantity             |
@@ -749,6 +780,22 @@ public $timestamps = false
 
 ---
 
+### 3.16 `CompanySetting`
+```
+Sin traits de UUID — usa bigint PK auto-increment.
+tabla: company_settings
+```
+
+No tiene relaciones con otras entidades. Siempre se trabaja con `CompanySetting::first()` o `CompanySetting::firstOrNew([])`.
+
+**`$fillable`:** `company_name`, `email`, `phone`, `address`, `facebook_url`, `instagram_url`, `whatsapp`, `hero_title`, `hero_subtitle`, `hero_image_path`, `hero_image_2_path`, `hero_image_3_path`, `about_title`, `about_description`, `about_image_path`, `footer_text`, `logo_login_path`, `logo_sidebar_path`, `logo_sidebar_compact_path`, `logo_landing_path`
+
+**`$appends`:** `hero_image_url`, `hero_image_2_url`, `hero_image_3_url`, `about_image_url`, `logo_login_url`, `logo_sidebar_url`, `logo_sidebar_compact_url`, `logo_landing_url`
+
+Todos los accessors de URL siguen el patrón: `$path ? asset('storage/' . $path) : null`.
+
+---
+
 ### 3.13 `OrderReturn`
 ```
 Traits: HasFactory, HasUuids
@@ -835,6 +882,9 @@ authStore.hasPermission('modulo-clientes') // revisa user.role.permissions[].slu
 - No autorizado: `401 Unauthorized`
 - No encontrado: `404 Not Found`
 - Paginación: `{ data: [...], current_page, last_page, per_page, total, from, to }`
+- **Rate limiting:** rutas de lectura pública `throttle:120,1` · rutas de escritura pública (`/login`, `POST /public/orders`) `throttle:20,1`
+- **`cost_price` y `base_price`** se omiten de `ProductResource` cuando el request no está autenticado (rutas públicas)
+- **`order_number`** incluido en `OrderResource` — formato `PED-YYYY-NNNNN`
 
 ---
 
@@ -1032,11 +1082,49 @@ Elimina físicamente el archivo y el registro.
 #### `GET /api/settings` — Protegida  
 #### `GET /api/public/settings` — Pública
 
+Ambos devuelven el único registro de `company_settings` incluyendo todos los atributos appended (`*_url`).
+
 #### `POST /api/settings` — Actualiza (upsert)
-```json
-Body: cualquier campo de company_settings (todos nullable)
-Acepta: multipart/form-data (para subir hero_image_path o about_image_path)
 ```
+Content-Type: multipart/form-data
+Auth requerida: sí (auth:sanctum)
+
+Campos de texto (todos nullable):
+  company_name, email, phone, address,
+  facebook_url, instagram_url, whatsapp,
+  hero_title, hero_subtitle,
+  about_title, about_description, footer_text
+
+Archivos de imagen (image/*, max 4 MB):
+  hero_image        → hero_image_path    (slider posición 1)
+  hero_image_2      → hero_image_2_path  (slider posición 2)
+  hero_image_3      → hero_image_3_path  (slider posición 3)
+  about_image       → about_image_path
+
+Logos del sistema (image/* + SVG, max 2 MB):
+  logo_login           → logo_login_path
+  logo_sidebar         → logo_sidebar_path
+  logo_sidebar_compact → logo_sidebar_compact_path
+  logo_landing         → logo_landing_path
+
+Flags de eliminación (boolean, enviar "1" para eliminar):
+  remove_hero_image           → elimina hero_image_path
+  remove_hero_image_2         → elimina hero_image_2_path
+  remove_hero_image_3         → elimina hero_image_3_path
+  remove_logo_login           → elimina logo_login_path
+  remove_logo_sidebar         → elimina logo_sidebar_path
+  remove_logo_sidebar_compact → elimina logo_sidebar_compact_path
+  remove_logo_landing         → elimina logo_landing_path
+
+Comportamiento interno (handleImage):
+  1. Si remove_* = true → borra físico de storage + pone null en BD
+  2. Si hay archivo nuevo → borra el anterior (si existía) + almacena en company/
+  3. Si no hay archivo ni flag → el campo no cambia
+
+Response 200: { "message": "Configuración actualizada correctamente.", "settings": CompanySetting }
+```
+
+> Las imágenes se almacenan en `storage/app/public/company/`. Se acceden via `http://localhost:8000/storage/company/{filename}`.
 
 ---
 
@@ -1676,11 +1764,16 @@ pending ──┼→ confirmed ──→ in_production ──→ ready ──→
 
 ## 9. Almacenamiento de Archivos
 
-| Propósito                     | Ruta en storage                    | Endpoint                         |
-|-------------------------------|------------------------------------|----------------------------------|
-| Imágenes de producto          | `products/{product_id}/{filename}` | POST `/products/{id}/images`     |
-| Imágenes de referencia (órdenes) | `orders/references/{filename}`  | POST `/orders` (multipart)       |
-| Logo/imagen hero empresa      | Configurable en `company_settings` | POST `/settings`                 |
+| Propósito                          | Ruta en storage                    | Endpoint                     |
+|------------------------------------|------------------------------------|------------------------------|
+| Imágenes de producto               | `products/{product_id}/{filename}` | POST `/products/{id}/images` |
+| Imágenes de referencia (órdenes)   | `orders/references/{filename}`     | POST `/orders` (multipart)   |
+| Hero slider (imágenes 1, 2, 3)     | `company/{filename}`               | POST `/settings`             |
+| Imagen sección "Nosotros"          | `company/{filename}`               | POST `/settings`             |
+| Logo login                         | `company/{filename}`               | POST `/settings`             |
+| Logo sidebar expandido             | `company/{filename}`               | POST `/settings`             |
+| Logo sidebar compacto              | `company/{filename}`               | POST `/settings`             |
+| Logo landing pública               | `company/{filename}`               | POST `/settings`             |
 
 - **Disco:** `public` (accesible via `/storage/...`)
 - **URL pública:** `asset('storage/' . $path)`

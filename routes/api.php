@@ -25,13 +25,21 @@ use App\Http\Controllers\CompanySettingController;
 | Rutas Públicas
 |--------------------------------------------------------------------------
 */
-Route::post('/login', [AuthController::class, 'login']);
-Route::get('/public/categories', [CategoryController::class, 'index']);
-Route::get('/public/settings', [CompanySettingController::class, 'show']);
-Route::get('/public/products', [ProductController::class, 'index']);
-Route::get('/public/products/{product}', [ProductController::class, 'show']);
-Route::post('/public/orders', [PublicOrderController::class, 'store']);
-Route::get('/public/customers/lookup', [CustomerController::class, 'lookup']);
+
+// Lectura pública: 120 requests/minuto (catálogo, settings, categorías)
+Route::middleware('throttle:120,1')->group(function () {
+    Route::get('/public/categories', [CategoryController::class, 'index']);
+    Route::get('/public/settings', [CompanySettingController::class, 'show']);
+    Route::get('/public/products', [ProductController::class, 'index']);
+    Route::get('/public/products/{product}', [ProductController::class, 'show']);
+    Route::get('/public/customers/lookup', [CustomerController::class, 'lookup']);
+});
+
+// Escritura pública: 20 requests/minuto (checkout, login)
+Route::middleware('throttle:20,1')->group(function () {
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/public/orders', [PublicOrderController::class, 'store']);
+});
 
 /*
 |--------------------------------------------------------------------------

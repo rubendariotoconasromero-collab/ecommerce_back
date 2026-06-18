@@ -12,25 +12,21 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    /**
-     * GET /api/dashboard
-     *
-     * Devuelve todos los KPIs necesarios para el panel principal en una sola llamada.
-     */
     public function __invoke()
     {
-        $now       = Carbon::now();
+        $now            = Carbon::now();
         $startMonth     = $now->copy()->startOfMonth();
         $startLastMonth = $now->copy()->subMonth()->startOfMonth();
         $endLastMonth   = $now->copy()->subMonth()->endOfMonth();
 
         return response()->json([
-            'orders'      => $this->orderStats($startMonth, $startLastMonth, $endLastMonth),
-            'revenue'     => $this->revenueStats($startMonth, $startLastMonth, $endLastMonth),
-            'customers'   => $this->customerStats($startMonth),
-            'inventory'   => $this->inventoryStats(),
-            'recent_orders' => $this->recentOrders(),
-            'top_customers' => $this->topCustomers(),
+            'orders'          => $this->orderStats($startMonth, $startLastMonth, $endLastMonth),
+            'revenue'         => $this->revenueStats($startMonth, $startLastMonth, $endLastMonth),
+            'customers'       => $this->customerStats($startMonth),
+            'inventory'       => $this->inventoryStats(),
+            'monthly_revenue' => $this->monthlyRevenue(),
+            'recent_orders'   => $this->recentOrders(),
+            'top_customers'   => $this->topCustomers(),
         ]);
     }
 
@@ -48,11 +44,11 @@ class DashboardController extends Controller
         $activeStatuses = ['pending', 'confirmed', 'in_production', 'ready', 'shipped'];
 
         return [
-            'total'          => array_sum($byStatus),
-            'this_month'     => Order::whereDate('created_at', '>=', $startMonth)->count(),
-            'last_month'     => Order::whereBetween('created_at', [$startLastMonth, $endLastMonth])->count(),
-            'active'         => Order::whereIn('status', $activeStatuses)->count(),
-            'by_status'      => [
+            'total'      => array_sum($byStatus),
+            'this_month' => Order::whereDate('created_at', '>=', $startMonth)->count(),
+            'last_month' => Order::whereBetween('created_at', [$startLastMonth, $endLastMonth])->count(),
+            'active'     => Order::whereIn('status', $activeStatuses)->count(),
+            'by_status'  => [
                 'pending'       => $byStatus['pending']       ?? 0,
                 'confirmed'     => $byStatus['confirmed']     ?? 0,
                 'in_production' => $byStatus['in_production'] ?? 0,
@@ -66,7 +62,7 @@ class DashboardController extends Controller
     }
 
     // -------------------------------------------------------------------------
-    // Ingresos (pagos completados sobre órdenes entregadas)
+    // Ingresos
     // -------------------------------------------------------------------------
 
     private function revenueStats(Carbon $startMonth, Carbon $startLastMonth, Carbon $endLastMonth): array
@@ -114,46 +110,68 @@ class DashboardController extends Controller
 
     private function inventoryStats(): array
     {
-        $lowStock = Inventory::whereRaw(
-            '(qty_available - qty_reserved) <= reorder_point'
-        )->count();
-
+        $lowStock   = Inventory::whereRaw('(qty_available - qty_reserved) <= reorder_point')->count();
         $outOfStock = Inventory::where('qty_available', '<=', 0)->count();
-
-        $inProduction = Inventory::where('qty_in_production', '>', 0)->sum('qty_in_production');
+        $inProd     = Inventory::where('qty_in_production', '>', 0)->sum('qty_in_production');
 
         return [
-            'low_stock_count'    => $lowStock,
-            'out_of_stock_count' => $outOfStock,
-            'units_in_production'=> (int) $inProduction,
+            'low_stock_count'     => $lowStock,
+            'out_of_stock_count'  => $outOfStock,
+            'units_in_production' => (int) $inProd,
         ];
     }
 
     // -------------------------------------------------------------------------
-    // Órdenes recientes
+    // Tendencia de ingresos — últimos 6 meses
+    // -------------------------------------------------------------------------
+
+    private function monthlyRevenue(): array
+    {
+        $result = [];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $month = Carbon::now()->subMonths($i);
+
+            $result[] = [
+                'year'    => $month->year,
+                'month'   => $month->month,
+                'revenue' => (float) Payment::where('status', 'completed')
+                    ->whereYear('paid_at', $month->year)
+                    ->whereMonth('paid_at', $month->month)
+                    ->sum('amount'),
+                'orders'  => Order::whereYear('created_at', $month->year)
+                    ->whereMonth('created_at', $month->month)
+                    ->count(),
+            ];
+        }
+
+        return $result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Pedidos recientes
     // -------------------------------------------------------------------------
 
     private function recentOrders(): array
     {
-        return Order::with([
-                'customer:id,name,business_name,customer_type',
-            ])
-            ->select('id', 'customer_id', 'total_amount', 'status', 'created_at')
+        return Order::with(['customer:id,name,business_name,customer_type'])
+            ->select('id', 'order_number', 'customer_id', 'total_amount', 'status', 'created_at')
             ->orderBy('created_at', 'desc')
             ->limit(8)
             ->get()
             ->map(fn ($o) => [
                 'id'            => $o->id,
+                'order_number'  => $o->order_number ?? strtoupper(substr($o->id, 0, 8)),
                 'total_amount'  => (float) $o->total_amount,
                 'status'        => $o->status,
                 'created_at'    => $o->created_at->toIso8601String(),
-                'customer_name' => $o->customer?->business_name ?? $o->customer?->name,
+                'customer_name' => $o->customer?->business_name ?? $o->customer?->name ?? '—',
             ])
             ->toArray();
     }
 
     // -------------------------------------------------------------------------
-    // Top clientes por facturación total (órdenes delivered + pagos completed)
+    // Top clientes por facturación
     // -------------------------------------------------------------------------
 
     private function topCustomers(): array

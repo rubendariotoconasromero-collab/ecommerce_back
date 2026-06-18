@@ -79,6 +79,7 @@ class OrderService
             $order = Order::create([
                 'customer_id'           => $data['customer_id'],
                 'user_id'               => $actor?->id,
+                'order_number'          => $this->generateOrderNumber(),
                 'total_amount'          => $totalAmount,
                 'status'                => 'pending',
                 'expected_delivery_date'=> $expectedDelivery,
@@ -284,5 +285,24 @@ class OrderService
             'action_taken' => $action,
             'notes'        => $notes,
         ]);
+    }
+
+    /**
+     * Genera un número de orden correlativo por año con formato PED-YYYY-NNNNN.
+     * Se llama dentro de una transacción con lockForUpdate para garantizar unicidad
+     * bajo concurrencia. El contador se reinicia cada año.
+     */
+    private function generateOrderNumber(): string
+    {
+        $year   = now()->year;
+        $prefix = "PED-{$year}-";
+
+        $last = Order::where('order_number', 'like', "{$prefix}%")
+            ->lockForUpdate()
+            ->max('order_number');
+
+        $seq = $last ? ((int) substr($last, -5)) + 1 : 1;
+
+        return $prefix . str_pad($seq, 5, '0', STR_PAD_LEFT);
     }
 }
